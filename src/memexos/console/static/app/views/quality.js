@@ -65,21 +65,22 @@ function renderQuality(B, q, R) {
   area($("#q-trend"), days, {key: "r", color: "#e7c792", h: 200, yMax: 1, fmtV: v => pct(v), ref: rateAll == null ? null : {v: rateAll, label: T("q.avg_all", {p: pct(rateAll)}), color: "#b9c3d1"},
     tipX: r => `<br><span class=m>${esc(T("q.trend_tip", {p: r.p, f: r.f}))}</span>`});
   const why = $("#q-why"); if (frs.length) why.appendChild(hbars(frs.map(([, l, n, k]) => [l, n, T("q.why_tip", {n, k})]), {color: "linear-gradient(90deg, rgba(255,107,107,.35), #ff6b6b)"})); else why.innerHTML = `<div class="muted small">${esc(T("c.none"))}</div>`;
-  columns($("#q-cost"), costs, roles.map((r, i) => ({key: r, name: T("role." + r) === "role." + r ? r : T("role." + r), color: ROLE_COL[i % ROLE_COL.length]})), {h: 210, fmtV: v => !v ? "$0" : "$" + (v >= 10 ? Math.round(v) : v.toFixed(1))});
+  columns($("#q-cost"), costs, roles.map((r, i) => ({key: r, name: T("role." + r) === "role." + r ? r : T("role." + r), color: ROLE_COL[i % ROLE_COL.length]})), {h: 210, fmtV: moneyTick});
   scatter($("#q-sc"), R.runs.filter(r => r.job === "ingest" && r.status === "published" && r.t1));
 }
-// axis money: below a dollar the rounded label repeats ($0 $0 $1 $1) and the chart looks wrong
-function axisMoney(v) { return !v ? "$0" : v >= 10 ? "$" + Math.round(v) : v >= 1 ? "$" + v.toFixed(1) : "$" + v.toFixed(2); }
 function scatter(el, runs) {
   el.classList.add("chart");
   if (!runs.length) { el.innerHTML = `<div class="empty">${esc(T("c.no_data"))}</div>`; return; }
   sized(el, W => {
     const H = 230, padL = 40, padB = 24, padT = 8, xs = runs.map(r => (r.t1 - r.t0) / 60), ys = runs.map(r => Number(r.cost) || 0);
+    // the scale follows the data: a fixed floor of 1 drew every sub-dollar batch on the axis
+    if (!ys.some(v => v > 0)) { el.innerHTML = `<div class="empty">${esc(T("c.no_data"))}</div>`; return; }
     // the x scale follows the 95th percentile; the rare very slow batch sits on the right edge, drawn hollow (its real time is in the tooltip)
     const p95 = xs.slice().sort((a, b) => a - b)[Math.floor(xs.length * 0.95)] || 1;
-    const mx = niceMax(p95 * 1.15), my = niceMax(Math.max(...ys, 1)), X = v => padL + (W - padL - 10) * Math.min(v, mx) / mx, Y = v => padT + (H - padT - padB) * (1 - v / my);
+    const yAxis = niceAxis(Math.max(...ys), 5), my = yAxis.max || 1, mx = niceMax(p95 * 1.15), X = v => padL + (W - padL - 10) * Math.min(v, mx) / mx, Y = v => padT + (H - padT - padB) * (1 - v / my);
     let s = `<svg height="${H}" viewBox="0 0 ${W} ${H}">`;
-    for (const t of [0, .25, .5, .75, 1]) s += `<line class="gl" x1="${padL}" x2="${W - 10}" y1="${Y(my * t)}" y2="${Y(my * t)}"/><text x="${padL - 6}" y="${Y(my * t) + 3.5}" text-anchor="end">${axisMoney(my * t)}</text><text x="${X(mx * t)}" y="${H - 6}" text-anchor="middle">${esc(T("u.min", {n: Math.round(mx * t)}))}</text>`;
+    for (const v of yAxis.ticks) s += `<line class="gl" x1="${padL}" x2="${W - 10}" y1="${Y(v)}" y2="${Y(v)}"/><text x="${padL - 6}" y="${Y(v) + 3.5}" text-anchor="end">${moneyTick(v)}</text>`;
+    for (const t of [0, .25, .5, .75, 1]) s += `<text x="${X(mx * t)}" y="${H - 6}" text-anchor="middle">${esc(T("u.min", {n: Math.round(mx * t)}))}</text>`;
     runs.forEach((r, i) => { const g = (r.gate2 || []).find(x => x.mode === "ingest"), c = !g ? "#7b8697" : g.passed ? "var(--ok)" : g.passed === false ? "var(--crit)" : "#7b8697";
       s += `<circle class="pt" cx="${X(xs[i])}" cy="${Y(ys[i])}" r="${3.5 + Math.min(5, (r.files.length || 1))}" fill="${c}" fill-opacity="${xs[i] > mx ? 0 : .55}" stroke="${c}" stroke-width="1.2" data-id="${esc(r.id)}" data-tip="${esc(runTip(r))}" style="cursor:pointer;transform-box:fill-box;transform-origin:center;animation:inPop var(--sp-bouncy-d) var(--sp-bouncy-e) both;animation-delay:${Math.min(i, 60) * 12}ms"/>`; });
     el.innerHTML = s + `</svg><div class="legend" style="margin-top:4px"><span><i style="background:var(--ok)"></i>${esc(T("q.sc_pass"))}</span><span><i style="background:var(--crit)"></i>${esc(T("q.sc_fail"))}</span><span><i style="background:#7b8697"></i>${esc(T("q.sc_none"))}</span><span class="muted">${esc(T("q.sc_note"))}</span></div>`;

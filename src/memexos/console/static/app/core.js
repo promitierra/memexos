@@ -300,6 +300,23 @@ function seg(el, onPick) {
 // x labels: every few; the last one (today) always, dropping the one before when they would collide
 function xLab(i, n) { if (n <= 10) return true; const k = Math.ceil(n / 8); if (i === n - 1) return true; return i % k === 0 && n - 1 - i >= k * 0.6; }
 function niceMax(v) { if (v <= 0) return 1; const p = Math.pow(10, Math.floor(Math.log10(v))), m = v / p; return (m <= 1 ? 1 : m <= 2 ? 2 : m <= 2.5 ? 2.5 : m <= 5 ? 5 : 10) * p; }
+// Axis for real data: pick a round step first, then the top of the scale.
+// Using niceMax alone jumps 1, 2, 2.5, 5, 10, so a 0.48 maximum became a 1.00
+// axis and every sub-dollar chart looked flat.
+function niceAxis(max, n = 5) {
+  if (!(max > 0)) return {max: 0, ticks: [0]};
+  const raw = max / n, p = Math.pow(10, Math.floor(Math.log10(raw))), m = raw / p;
+  const step = (m <= 1 ? 1 : m <= 2 ? 2 : m <= 2.5 ? 2.5 : m <= 5 ? 5 : 10) * p;
+  const top = Math.ceil(max / step - 1e-9) * step, ticks = [];
+  for (let v = 0; v <= top + step * 1e-6; v += step) ticks.push(+v.toFixed(10));
+  return {max: top, ticks};
+}
+function moneyTick(v) {
+  if (!v) return "$0";
+  if (v < 1) return "$" + v.toFixed(2);                 // cents, or the labels repeat
+  if (v < 1000) return "$" + (Number.isInteger(v) ? v : v.toFixed(1));
+  return "$" + Math.round(v);
+}
 function sized(el, draw) {
   let lastW = 0; const go = () => { const w = el.clientWidth; if (!w || Math.abs(w - lastW) < 2) return; lastW = w; draw(w); };
   go(); new ResizeObserver(go).observe(el);
@@ -310,10 +327,10 @@ function columns(el, rows, series, {h = 170, stacked = true, onClick, fmtV = fmt
   const legend = series.length > 1 ? `<div class="legend">${series.map(s => `<span><i style="background:${s.color}"></i>${esc(s.name)}</span>`).join("")}</div>` : "";
   sized(el, W => {
     const padL = 34, padB = 20, padT = 6, H = h, tot = r => stacked ? series.reduce((a, s) => a + (r[s.key] || 0), 0) : Math.max(...series.map(s => r[s.key] || 0));
-    const mx = niceMax(Math.max(...rows.map(tot))), step = (W - padL) / rows.length, bw = Math.max(2, Math.min(22, step * .62));
+    const axis = niceAxis(Math.max(...rows.map(tot)), 4), mx = axis.max || 1, step = (W - padL) / rows.length, bw = Math.max(2, Math.min(22, step * .62));
     const y = v => padT + (H - padT - padB) * (1 - v / mx);
     let s = `<svg height="${H}" viewBox="0 0 ${W} ${H}">`;
-    for (const t of [0, .5, 1]) s += `<line class="gl" x1="${padL}" x2="${W}" y1="${y(mx * t)}" y2="${y(mx * t)}"/><text x="${padL - 6}" y="${y(mx * t) + 3.5}" text-anchor="end">${fmtV(mx * t)}</text>`;
+    for (const v of axis.ticks) s += `<line class="gl" x1="${padL}" x2="${W}" y1="${y(v)}" y2="${y(v)}"/><text x="${padL - 6}" y="${y(v) + 3.5}" text-anchor="end">${fmtV(v)}</text>`;
     rows.forEach((r, i) => {
       const x = padL + i * step + (step - bw) / 2; let base = 0;
       series.forEach((se, j) => { const v = r[se.key] || 0; if (!v) return;
