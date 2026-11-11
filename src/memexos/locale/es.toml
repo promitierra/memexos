@@ -535,6 +535,11 @@ top10 = "Top 10"
 no_evals = "Todavía no hay evaluación de recuperación (memex eval retrieval)."
 unpriced = "sin precios configurados"
 unpriced_sub = "parcial · sin precios en: {backends}"
+usage_header = "Consumo por modelo"
+usage_sub = "Por backend y modelo: llamadas y tokens (entrada / caché / salida). Medido, no estimado."
+calls = "llamadas"
+tokens = "tokens"
+no_price = "sin precio"
 
 [console.role]
 writer = "redactor"
@@ -596,3 +601,6 @@ not_running = "La consola no está corriendo."
 stopped = "Consola detenida."
 failed = "La consola no arrancó; mira {log}"
 port_busy = "El puerto {port} está en uso ({why}). Elige otro con memex console --port N o console.port."
+
+[event]
+"selfcheck.counts" = "{total} oraciones verificadas, {flagged} marcadas"

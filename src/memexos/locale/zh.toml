@@ -173,6 +173,7 @@ hold = "扣下、没有发布：{reason}"
 "nightly.step_failed" = "夜间任务 {step} 出错：{why}"
 "nightly.done" = "夜间任务全部跑完"
 "model.call" = "{role} 用 {backend} {model}：{seconds} 秒，{cost}"
+"selfcheck.counts" = "核对了 {total} 句，标记 {flagged} 句"
 
 [step]
 eval_write = "出测评题"
@@ -1327,6 +1328,11 @@ top10 = "前 10"
 no_evals = "还没有检索测评（memex eval retrieval）"
 unpriced = "未配置价格"
 unpriced_sub = "部分 · 未定价：{backends}"
+usage_header = "模型用量"
+usage_sub = "按后端与模型：调用次数与 token（输入 / 缓存 / 输出）。实测数据。"
+calls = "次调用"
+tokens = "token"
+no_price = "未定价"
 
 [console.role]
 writer = "编写"

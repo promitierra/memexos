@@ -1,6 +1,6 @@
 """Cost 0.00 and "no price configured" are different facts, and the console says which."""
 
-from memexos.console.data import unpriced_backends
+from memexos.console.data import unpriced_backends, usage_rows
 
 
 class FakeCfg:
@@ -46,3 +46,47 @@ def test_the_list_is_sorted_and_complete():
         "codex": {"model": "c"},
     })
     assert unpriced_backends(cfg) == ["amr", "amr-flash", "deepseek"]
+
+
+# ---------------------------------------------------------------- tokens per model
+
+
+def call(backend, model, inp, cached, out, cost=None, secs=1.0):
+    data = {"backend": backend, "model": model, "seconds": secs,
+            "tokens": {"input_tokens": inp, "cached_tokens": cached, "output_tokens": out}}
+    if cost is not None:
+        data["cost_usd"] = cost
+    return {"type": "model.call", "ts": "2026-11-11T20:00:00", "data": data}
+
+
+def test_usage_rows_adds_calls_and_tokens_per_model():
+    rows = usage_rows([
+        call("amr", "eco", 100, 40, 10),
+        call("amr", "eco", 50, 0, 5),
+        call("deepseek", "flash", 30, 0, 7),
+    ])
+    by = {r["model"]: r for r in rows}
+    assert by["amr:eco"]["calls"] == 2
+    assert by["amr:eco"]["input"] == 150
+    assert by["amr:eco"]["cached"] == 40
+    assert by["amr:eco"]["output"] == 15
+    assert by["deepseek:flash"]["input"] == 30
+
+
+def test_a_model_without_cost_is_marked_unpriced_but_still_counted():
+    rows = usage_rows([call("amr", "eco", 10, 0, 1), call("amr", "eco", 10, 0, 1, cost=0.002)])
+    row = rows[0]
+    assert row["calls"] == 2
+    assert row["priced"] is True                    # at least one call carried a price
+    assert row["cost"] == 0.002
+    assert row["priced_calls"] == 1
+
+
+def test_rows_come_sorted_by_input_tokens():
+    rows = usage_rows([call("a", "small", 5, 0, 1), call("b", "big", 900, 0, 1)])
+    assert [r["model"] for r in rows] == ["b:big", "a:small"]
+
+
+def test_tokens_survive_a_missing_usage_dict():
+    rows = usage_rows([{"type": "model.call", "ts": "x", "data": {"backend": "a", "model": "b"}}])
+    assert rows[0]["input"] == 0 and rows[0]["calls"] == 1

@@ -61,6 +61,35 @@ def unpriced_backends(cfg) -> list[str]:
     return sorted(out)
 
 
+def usage_rows(calls) -> list[dict]:
+    """Aggregate `model.call` events per backend:model: calls, tokens and cost.
+
+    Tokens are measured, not guessed, so this table is useful even when no
+    price is configured: it answers "which model consumes what" without
+    pretending to know what it costs.
+    """
+    rows: dict[str, dict] = {}
+    for e in calls:
+        d = e.get("data") or {}
+        key = f"{d.get('backend') or '?'}:{d.get('model') or '?'}"
+        row = rows.setdefault(key, {"model": key, "calls": 0, "input": 0, "cached": 0, "output": 0,
+                                    "cost": 0.0, "priced_calls": 0, "seconds": 0.0})
+        row["calls"] += 1
+        tok = d.get("tokens") or {}
+        row["input"] += int(tok.get("input_tokens") or 0)
+        row["cached"] += int(tok.get("cached_tokens") or 0)
+        row["output"] += int(tok.get("output_tokens") or 0)
+        row["seconds"] += float(d.get("seconds") or 0)
+        if isinstance(d.get("cost_usd"), (int, float)):
+            row["cost"] += d["cost_usd"]
+            row["priced_calls"] += 1
+    for row in rows.values():
+        row["cost"] = round(row["cost"], 4)
+        row["seconds"] = round(row["seconds"], 1)
+        row["priced"] = row["priced_calls"] > 0
+    return sorted(rows.values(), key=lambda r: (-r["input"], r["model"]))
+
+
 class Data:
     def __init__(self, cfg):
         self.cfg = cfg
@@ -582,7 +611,8 @@ class Data:
                 fail_dirs.append(d.get("dir"))
         roles = list((self.cfg.get("models") or {}).keys())
         cost = collections.defaultdict(lambda: collections.defaultdict(float))
-        for e in events.read(self.state, since=since, types=("model.call",)):
+        calls = list(events.read(self.state, since=since, types=("model.call",)))
+        for e in calls:
             d = e.get("data") or {}
             if isinstance(d.get("cost_usd"), (int, float)):
                 cost[e["ts"][:10]][d.get("role") or "other"] += d["cost_usd"]
@@ -609,7 +639,8 @@ class Data:
                 "fail_reports_30d": len(fail_dirs), "retrieval_evals": evals,
                 # cost 0.00 and "no price configured" are different facts; the page must say which
                 "unpriced_backends": unpriced_backends(self.cfg),
-                "cost_priced": not unpriced_backends(self.cfg)}
+                "cost_priced": not unpriced_backends(self.cfg),
+                "model_usage": usage_rows(calls)}
 
     # ------------------------------------------------------------ the owner's profile (opt-in)
     def profile(self, q: dict) -> dict:

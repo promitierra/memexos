@@ -48,6 +48,12 @@ function renderQuality(B, q, R) {
         <div class="qrow"><div class="t"><span>${esc(T("q.rechecks"))}</span><b>${rc.pass + rc.fail}</b></div>
           <div class="s">${esc(T("q.rechecks_sub", {p: rc.pass, f: rc.fail, u: rc.unfinished}))}</div></div></div></div>
     <div class="glass card" data-in><h2 class="h">${esc(T("q.cost"))} <small>COST · 21D</small></h2><div class="sub">${esc(T("q.cost_sub"))}</div><div id="q-cost"></div></div>
+    <div class="glass card" data-in><h2 class="h">${esc(T("q.usage_header"))} <small>30D</small></h2>
+      <div class="sub">${esc(T("q.usage_sub"))}</div>
+      ${(q.model_usage || []).map(u => `<div class="s"><b>${esc(u.model)}</b> · ${u.calls} ${esc(T("q.calls"))} ·
+        ${u.input} / ${u.cached} / ${u.output} ${esc(T("q.tokens"))} ·
+        ${u.priced && u.cost ? money(u.cost) : esc(T("q.no_price"))}</div>`).join("") || `<div class="s">—</div>`}
+    </div>
     <div class="glass card" data-in><h2 class="h">${esc(T("q.runs"))} <small>RUNS · 30D</small></h2><div class="sub">${esc(T("q.runs_sub"))}</div><div id="q-sc"></div></div>
   </div>
   <div class="glass card" style="margin-top:14px" data-in><h2 class="h">${esc(T("q.evals"))} <small>RETRIEVAL EVALS</small></h2><div class="sub">${esc(T("q.evals_sub"))}</div>

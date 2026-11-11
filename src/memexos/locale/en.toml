@@ -173,6 +173,7 @@ hold = "held back, not published: {reason}"
 "nightly.step_failed" = "nightly step {step} failed: {why}"
 "nightly.done" = "the nightly run is done"
 "model.call" = "{role} via {backend} {model}: {seconds}s, {cost}"
+"selfcheck.counts" = "{total} sentences checked, {flagged} flagged"
 
 [step]
 eval_write = "writing evaluation questions"
@@ -1330,6 +1331,11 @@ top10 = "Top 10"
 no_evals = "No retrieval evaluation yet (memex eval retrieval)."
 unpriced = "no prices configured"
 unpriced_sub = "partial · no prices for: {backends}"
+usage_header = "Model usage"
+usage_sub = "Per backend and model: calls and tokens (input / cached / output). Measured, not estimated."
+calls = "calls"
+tokens = "tokens"
+no_price = "unpriced"
 
 [console.role]
 writer = "writer"
