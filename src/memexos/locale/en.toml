@@ -1328,6 +1328,8 @@ top1 = "1st"
 top3 = "Top 3"
 top10 = "Top 10"
 no_evals = "No retrieval evaluation yet (memex eval retrieval)."
+unpriced = "no prices configured"
+unpriced_sub = "partial · no prices for: {backends}"
 
 [console.role]
 writer = "writer"

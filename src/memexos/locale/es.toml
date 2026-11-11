@@ -533,6 +533,8 @@ top1 = "1.ª"
 top3 = "Top 3"
 top10 = "Top 10"
 no_evals = "Todavía no hay evaluación de recuperación (memex eval retrieval)."
+unpriced = "sin precios configurados"
+unpriced_sub = "parcial · sin precios en: {backends}"
 
 [console.role]
 writer = "redactor"

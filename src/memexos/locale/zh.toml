@@ -1325,6 +1325,8 @@ top1 = "第 1 名"
 top3 = "前 3"
 top10 = "前 10"
 no_evals = "还没有检索测评（memex eval retrieval）"
+unpriced = "未配置价格"
+unpriced_sub = "部分 · 未定价：{backends}"
 
 [console.role]
 writer = "编写"

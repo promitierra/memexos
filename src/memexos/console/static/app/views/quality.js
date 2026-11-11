@@ -21,6 +21,13 @@ function renderQuality(B, q, R) {
   const days = fillDays(q.gate2_days.map(d => ({label: d.day, p: d.pass, f: d.fail})), 21, ["p", "f"]).map(d => ({...d, r: d.p + d.f ? d.p / (d.p + d.f) : null}));
   const roles = q.roles, costs = fillDays(q.cost_days.map(d => ({label: d.day, ...d})), 21, roles), total = d => roles.reduce((a, r) => a + (d[r] || 0), 0);
   const c7 = costs.slice(-7).reduce((a, d) => a + total(d), 0) / 7, today = LIVE.data ? LIVE.data.metrics.cost_today : total(costs[costs.length - 1]);
+  // cost 0.00 with no prices configured is not 'free': the card says which backends are unpriced
+  const priced = q.cost_priced !== false, unpriced = q.unpriced_backends || [];
+  // a partial bill is still worth showing: hide the number only when there is nothing to show
+  const anyCost = today > 0 || c7 > 0;
+  const todayShown = anyCost || !unpriced.length ? money(today) : esc(T("q.unpriced"));
+  const todaySub = unpriced.length ? esc(T("q.unpriced_sub", {backends: unpriced.join(", ")}))
+                                   : esc(T("q.today_sub", {c: money(c7)}));
   const models = q.gate2_models, mtot = models.reduce((a, [, n]) => a + n, 0) || 1, frs = q.fail_reasons || [];
   const MCOL = ["#4f84ff", "#d5deea", "#d2a868", "#4cc7b6"];
   B.innerHTML = `<div class="qual">
@@ -32,9 +39,9 @@ function renderQuality(B, q, R) {
       <div class="glass card" data-in><h2 class="h">${esc(T("q.budget"))} <small>BUDGET</small></h2>
         ${q.backends.filter(b => b.available).map(b => `<div class="qrow"><div class="t"><span>${esc(b.name)}</span><span class="badge ${b.exhausted ? "crit" : "ok"}">${b.exhausted ? "✕ " + esc(T("q.out")) : "✓ " + esc(T("q.ok"))}</span></div>
           ${b.exhausted && b.until ? `<div class="s">${esc(T("q.out_since", {t: b.until}))}</div>` : ""}</div>`).join("") || `<div class="s">${esc(T("q.no_backends"))}</div>`}
-        <div class="qrow"><div class="t"><span>${esc(T("q.today"))}</span><b>${money(today)}</b></div>
+        <div class="qrow"><div class="t"><span>${esc(T("q.today"))}</span><b>${todayShown}</b></div>
           ${bullet(today, Math.max(today, c7) * 1.4 || 1, {ref: c7, refLabel: T("q.avg7"), fmtV: money, color: today > c7 * 1.3 ? "var(--warn)" : "var(--accent-mark)"})}
-          <div class="s">${esc(T("q.today_sub", {c: money(c7)}))}</div></div>
+          <div class="s">${todaySub}</div></div>
         <div class="qrow"><div class="t"><span>${esc(T("q.reviewers"))}</span><b>${mtot}<span class="muted small" style="font:12px var(--f-ui)"> ${esc(T("us.times"))}</span></b></div>
           <div class="vbar" style="height:10px">${models.map(([m, n], i) => `<i style="--i:${i};width:${n / mtot * 100}%;background:${MCOL[i % MCOL.length]}" data-tip="${esc(m)}: ${n}"></i>`).join("")}</div>
           <div class="legend" style="margin-top:6px">${models.map(([m, n], i) => `<span><i style="background:${MCOL[i % MCOL.length]}"></i>${esc(m)} ${n}</span>`).join("")}</div><div class="s">${esc(T("q.reviewers_sub"))}</div></div>

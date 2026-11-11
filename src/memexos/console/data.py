@@ -44,6 +44,23 @@ def event_kind(ev: dict) -> str:
     return next((k for k, types in EVENT_KIND.items() if t in types), "info")
 
 
+def unpriced_backends(cfg) -> list[str]:
+    """Backends with a model but no price configured: their cost is unknown, not zero.
+
+    The command-line backends report their own cost, so they are never listed:
+    there is nothing to configure for them.
+    """
+    out = []
+    for name, sec in (cfg.section("backends") or {}).items():
+        if not isinstance(sec, dict) or not sec.get("model"):
+            continue
+        if name in ("claude-code", "codex"):
+            continue
+        if not (float(sec.get("price_in") or 0) or float(sec.get("price_out") or 0)):
+            out.append(name)
+    return sorted(out)
+
+
 class Data:
     def __init__(self, cfg):
         self.cfg = cfg
@@ -589,7 +606,10 @@ class Data:
                 "cost_days": [{"day": k, **{r: round(v.get(r, 0), 4) for r in used_roles}} for k, v in sorted(cost.items())],
                 "roles": used_roles, "backends": self.backend_state(),
                 "fail_reasons": sorted(([k, i18n.t(f"report.kind.{k}"), *v] for k, v in reasons.items()), key=lambda x: -x[2]),
-                "fail_reports_30d": len(fail_dirs), "retrieval_evals": evals}
+                "fail_reports_30d": len(fail_dirs), "retrieval_evals": evals,
+                # cost 0.00 and "no price configured" are different facts; the page must say which
+                "unpriced_backends": unpriced_backends(self.cfg),
+                "cost_priced": not unpriced_backends(self.cfg)}
 
     # ------------------------------------------------------------ the owner's profile (opt-in)
     def profile(self, q: dict) -> dict:
