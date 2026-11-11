@@ -1,0 +1,337 @@
+# MemexOS configuration.
+#
+# Lookup order (later wins): built-in defaults (this file) < <vault>/.memex/config.toml
+# < ~/.config/memexos/config.toml (or $MEMEX_CONFIG) < environment variables.
+# Any key can be overridden from the environment as MEMEX_<SECTION>__<KEY>, for
+# example MEMEX_SEARCH__RERANK=none. Secrets are never stored here: settings
+# such as api_key_env name the environment variable that holds the secret.
+
+# Language of prompts, logs, the console and taxonomy labels: "en" or "zh".
+language = "es"
+
+[vault]
+# The knowledge base: a git repository with raw/, wiki/, index.md, log.md.
+# Override with $MEMEX_VAULT.
+path = "~/memex"
+
+[paths]
+# Empty = default. state: logs, events, locks, staging worktrees, review
+# artifacts ($XDG_STATE_HOME/memexos/<vault-id>). cache: search index, models
+# ($XDG_CACHE_HOME/memexos).
+state = ""
+cache = ""
+
+# ---------------------------------------------------------------------------
+# Models. Each role lists backends in order of preference; when one reports an
+# exhausted quota, the next one is used for a while.
+[models]
+# Agentic work that edits the wiki inside a staging worktree.
+writer = ["amr-flash", "amr", "deepseek"]
+# Gate 2, the independent review. Prefer a different model family from the writer.
+reviewer = ["amr-flash", "amr", "deepseek"]
+# Smaller structured jobs: classification, inbox triage, admission, usage judging.
+# Each entry is a backend name, optionally with a model for this role: "claude-code:sonnet".
+worker = ["amr", "amr-flash", "deepseek"]
+# Reading video frames.
+vision = ["deepseek"]
+# Many small yes/no questions (the self-check, category screening, ranking). "backend:model" picks a
+# cheaper model for this role only.
+judge = ["deepseek"]
+
+[backends.claude-code]
+command = "claude"
+model = ""          # empty = the CLI's default model
+effort = "high"
+proxy = ""          # empty = inherit the environment; "direct" = no proxy; or a URL
+# After a backend reports an exhausted quota, skip it for this long, then try again.
+retry_after_minutes = 60
+# Unattended runs skip your Claude Code user settings (hooks, plugins). If your API access is configured
+# through the "env" block of ~/.claude/settings.json (gateway URL, token, proxy), set this to true to pass
+# just that block to the runs.
+settings_env = false
+# Check that the command line is logged in before using it (claude auth status); a backend that is not logged
+# in counts as unavailable, so the next one in the role's list takes over.
+check_login = true
+
+[backends.codex]
+check_login = true      # `codex login status` before use; not logged in = unavailable
+command = "codex"
+model = ""            # empty: the model named in your own Codex config
+effort = "high"
+proxy = ""
+retry_after_minutes = 60
+isolate = true        # do not load your Codex config.toml (MCP servers, instructions) or rules; only the login is shared
+
+[backends.anthropic]
+# The Claude API through the official SDK (pip install "memexos[anthropic]"), for machines without the
+# Claude Code or Codex command lines. MemexOS runs the agent loop and enforces file permissions itself.
+api_key_env = "ANTHROPIC_API_KEY"
+base_url = ""       # empty = the SDK default
+model = ""          # empty = claude-opus-5
+proxy = ""
+retry_after_minutes = 60
+
+[backends.openai]
+# Any OpenAI-compatible Chat Completions API: OpenAI, Google Gemini, DeepSeek, Qwen, Kimi, OpenRouter, or a local
+# server (Ollama, LM Studio, vLLM). No extra package needed. Add more endpoints as their own sections with
+# type = "openai" (examples below) and name them in [models].
+base_url = "https://api.openai.com/v1"
+model = ""                     # required, e.g. the provider's model id
+api_key_env = "OPENAI_API_KEY" # "" for servers without keys; keys come from the environment or `memex secret set`
+proxy = ""
+json_mode = "schema"           # how to ask for JSON: schema (response_format json_schema) | object | prompt
+reasoning_effort = ""          # "" = do not send; "auto" = pass the task's effort; or low / medium / high
+price_in = 0.0                 # USD per million input tokens, for cost reports (0 = unknown)
+price_out = 0.0
+retry_after_minutes = 60
+#
+# A local model with Ollama:
+#   [backends.local]
+#   type = "openai"
+#   base_url = "http://localhost:11434/v1"
+#   model = "qwen3:32b"
+#   api_key_env = ""
+#   proxy = "direct"
+# DeepSeek:     base_url = "https://api.deepseek.com/v1",  api_key_env = "DEEPSEEK_API_KEY"
+# Gemini:       base_url = "https://generativelanguage.googleapis.com/v1beta/openai",  api_key_env = "GEMINI_API_KEY"
+# OpenRouter:   base_url = "https://openrouter.ai/api/v1",  api_key_env = "OPENROUTER_API_KEY"
+# Then, for example:  [models] writer = ["local"]  or  worker = ["local", "claude-code"]
+
+# ---------------------------------------------------------------------------
+# The judge answers small, fixed-format questions fast and cheaply: "is this
+# sentence supported by this passage?", "which of these categories fits?",
+# "how much does this pending decision matter?". It powers the self-check
+# before review, the first-pass category screen and inbox ranking.
+[judge]
+backend = "llm"  # llm (uses the worker models) | jev | none
+
+[judge.jev]
+# Jev, a hosted decision model (https://typesafe.ai). Enabling it sends the
+# sentences and source excerpts being judged to that service.
+url = "https://api.typesafe.ai/v1/systemone"
+model = "jev-latest"
+api_key_env = "JEV_API_KEY"
+proxy = ""
+# USD per million input tokens, used only to show spending in the console and
+# `memex usage`. 0.042 is a measured estimate; set it to your plan's price.
+price_in = 0.042
+
+# ---------------------------------------------------------------------------
+[search]
+# auto = qmd when it is installed and the vault is indexed, else the built-in
+# SQLite full-text index. fts = always the built-in index.
+backend = "auto"
+# Reorder the top candidates: none | qmd (local Qwen3 reranker shipped with
+# qmd) | llm (worker models) | jev. auto = qmd when its reranker model is already
+# downloaded (qmd fetches it on first use; set "qmd" to allow that), else none.
+rerank = "auto"
+rerank_timeout = 60     # seconds before giving up on the reranker and keeping the fused order
+# Seconds the local reranker may spend scoring per search. It measures its own speed on this machine and scores only
+# as many top candidates as fit (at least 5): all of them on a GPU, the first few on a CPU-only machine.
+rerank_budget = 6
+candidates = 20
+include_inbox = false
+
+[search.qmd]
+command = "qmd"
+index = ""          # qmd --index name; empty = "memexos-<vault id>" (kept apart from your other qmd collections)
+collection = "memex"
+# Embedding model for qmd, as a Hugging Face model URI. "auto" = by the knowledge
+# base's language: Qwen3-Embedding-0.6B for Chinese (qmd's default model is weak
+# on Chinese), qmd's default (embeddinggemma) otherwise. "" = always qmd's default.
+# Changing it makes the next `memex reindex` embed everything again.
+embed_model = "auto"
+# One sentence describing this knowledge base, given to qmd as collection context.
+context = ""
+# Extra paths (glob patterns relative to the knowledge base) to keep out of the
+# vector index, on top of .memex/, .git/, .obsidian/, raw/assets/, log.md and index.md.
+ignore = []
+# Route for qmd's one-time model downloads (about 1 GB from Hugging Face; searching
+# itself is offline): "" = [fetch] proxy, else your environment's proxy variables;
+# "direct" = no proxy; or a proxy URL. [fetch] proxy_cacert is passed on when a proxy is used.
+proxy = ""
+
+# ---------------------------------------------------------------------------
+[intake]
+# Collectors that run on `memex intake`. Built in: sessions (Claude Code and
+# Codex chats), docs (documents written during those chats), rss.
+# Plugins (off by default, need a logged-in browser): bilibili, x.
+sources = ["rss"]
+since_days = 30
+idle_hours = 6
+batch_chars = 400000
+batch_max = 6
+
+[intake.sessions]
+claude_dir = "~/.claude/projects"
+codex_dir = "~/.codex/sessions"
+# Directories that contain your projects. Documents written during a chat are
+# only copied into the vault when they live under one of these.
+project_roots = ["~/src", "~/projects", "~/code", "~/Documents"]
+
+[intake.rss]
+feeds_file = ".memex/feeds.txt"
+
+# Where a site's login comes from (login = …):
+#   "memex"  MemexOS's own browser profile: log in once with `memex login <site>` (a window opens); MemexOS then keeps
+#            the login alive by itself, also from scheduled jobs and for agents (`memex cookies refresh`).
+#   "chrome", "firefox", "edge", "brave", "safari", …  copy the login from that everyday browser (needs yt-dlp; on
+#            macOS only from a terminal, scheduled jobs then use the last copy).
+#   ""       no login.
+[plugins.bilibili]
+enabled = false
+login = "memex"
+proxy = "direct"
+
+[plugins.x]
+enabled = false
+login = "memex"
+proxy = ""
+likes = true
+first_run_max = 50  # the first run reads at most this many bookmarks and likes, not your whole history
+max_per_run = 300
+
+[plugins.youtube]
+# What you save on YouTube: "Liked videos" (LL), "Watch later" (WL), and any playlist ids or URLs you add. The two
+# private lists need your login (memex login youtube), which video capture then uses too.
+enabled = false
+login = "memex"
+proxy = ""
+playlists = ["LL", "WL"]
+first_run_max = 50  # the first run reads at most this many per list, not your whole history
+max_per_run = 200
+
+# ---------------------------------------------------------------------------
+[browser]
+# The browser MemexOS drives for site logins (Chrome, Chromium, Edge or Brave). Empty = the first one installed.
+command = ""
+
+# ---------------------------------------------------------------------------
+[fetch]
+# How web pages are turned into text: direct (fetch and convert locally) or
+# jina (https://r.jina.ai, a hosted reader; sends the URL to that service).
+reader = "direct"
+# Route for fetching: "" = whatever HTTPS_PROXY says, "direct" = no proxy, or a proxy URL (http://, https://,
+# socks5://). Plugins can set their own route ([plugins.<name>] proxy).
+proxy = ""
+# CA certificate (PEM) of a proxy that presents its own certificate, e.g. a private https:// proxy.
+proxy_cacert = ""
+# HTTP client: auto = curl when installed (https:// and socks proxies, compression, HTTP/2), else Python's urllib.
+client = "auto"
+# Some local proxies resolve every hostname to a fake address in 198.18.0.0/15.
+# Allow those addresses through the private-network guard.
+allow_fake_ip = false
+
+[asr]
+backend = "whisper-cpp"   # whisper-cpp | none
+command = "whisper-cli"
+# Path to a ggml model file, e.g. ggml-large-v3-turbo-q5_0.bin. Empty = the first
+# ggml-*.bin in ~/.local/share/memexos/models (where install.sh puts it).
+model = ""
+chunk_seconds = 300
+
+[visual]
+daily_max = 20
+effort = "xhigh"
+
+# ---------------------------------------------------------------------------
+[privacy]
+# Values of these environment variables (shell-style patterns on the name) are
+# scrubbed from anything written into the vault.
+redact_env = ["*_TOKEN", "*_KEY", "*_SECRET", "*_PASSWORD", "*_API_KEY"]
+# Extra files whose values are scrubbed (KEY=VALUE lines or one secret per line).
+redact_files = []
+# Directories the local-check agent may read besides the vault (it never gets
+# your whole home directory).
+investigate_roots = []
+
+# ---------------------------------------------------------------------------
+[pipeline]
+ingest_batch = 3
+gate1_fix_rounds = 2
+gate2 = "enforce"         # enforce | off (only for debugging)
+gate2_fix_rounds = 2
+selfcheck = "on"
+fix_max_reviews = 4
+correct_max = 6
+
+[taxonomy]
+# A draft category is put to you for approval once it has at least min_works
+# distinct works from min_days distinct capture days, and a blind re-check
+# puts at least min_stable of them back into it.
+min_works = 8
+min_days = 3
+min_stable = 0.8
+expire_days = 60
+max_drafts_per_top = 5
+# The judge's first-pass screen decides a domain on its own only when the top
+# category's probability >= judge_min_top, "none fits" <= judge_max_none, and
+# the scope check >= judge_min_scope. Otherwise the worker model decides.
+judge_min_top = 0.9
+judge_max_none = 0.1
+judge_min_scope = 0.8
+# A proposed draft is merged into an existing category judged the same topic
+# with at least this confidence.
+synonym_min = 0.5
+
+[inbox]
+apply_max = 8
+research_max = 8
+investigate_max = 6
+investigate_min_score = 0.75
+expire_days = 30
+
+# ---------------------------------------------------------------------------
+[state]
+# The event log (what every job did, step by step, with model costs) is kept as one file per month under
+# <state>/events/. Months older than this are deleted; 0 keeps everything.
+keep_events_months = 12
+
+[evals]
+# Retrieval evaluation (memex eval retrieval; docs/evals.md). Writing, checking and grading questions use this role's
+# models: the reviewer by default, so the writer does not grade its own work.
+role = "reviewer"
+cover_per_night = 20                  # pages that get a question each night (the nightly eval-cover step); 0 = all
+l2_agents = ["claude-code", "codex"]  # agents that answer in the usage test (at least two, so the interface is not tuned to one)
+l2_timeout = 1200
+
+[schedule]
+backend = "auto"          # auto | launchd | systemd | cron | none
+label_prefix = "io.memexos"
+reindex_minutes = 15
+ingest_minutes = 60
+intake_at = "03:17"
+lint_at = "sun 21:07"
+# What runs after the daily intake, in order. Remove steps you do not want.
+nightly = ["visual", "classify", "catalog-sync", "eval-cover", "usage-judge", "usage-verify",
+           "fix", "inbox-triage", "inbox-apply"]
+
+[console]
+host = "127.0.0.1"
+port = 8765
+# Show what your coding agents remember about you (Claude Code auto-memory).
+profile_page = false
+
+[backends.amr]
+api_key_env = "OPEN_DESIGN_API_KEY"
+model = "deepseek-v4.1-flash-eco"
+base_url = "https://amr-link.open-design.ai/v1"
+type = "openai"
+
+[backends.amr-pro]
+api_key_env = "OPEN_DESIGN_API_KEY"
+model = "deepseek-v4-pro"
+base_url = "https://amr-link.open-design.ai/v1"
+type = "openai"
+
+[backends.amr-flash]
+api_key_env = "OPEN_DESIGN_API_KEY"
+model = "deepseek-v4.1-flash"
+base_url = "https://amr-link.open-design.ai/v1"
+type = "openai"
+
+[backends.deepseek]
+api_key_env = "DEEPSEEK_API_KEY_MEMEXOS"
+model = "deepseek-flash"
+base_url = "https://api.deepseek.com/v1"
+type = "openai"
