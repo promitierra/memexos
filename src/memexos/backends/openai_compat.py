@@ -70,12 +70,10 @@ class OpenAICompatible(Backend):
         return json.loads(r.data)
 
     def _cost(self, usage: dict) -> float | None:
-        pin, pout = float(self.section.get("price_in") or 0), float(self.section.get("price_out") or 0)
-        if not (pin or pout):
-            return None
-        cached = usage.get("cached_tokens", 0)
-        return round(((usage["input_tokens"] - cached) * pin + cached * pin * float(self.section.get("cache_discount") or 0.5)
-                      + usage["output_tokens"] * pout) / 1e6, 6)
+        """Priced by memexos.pricing: one owner for tokens, cache and peak hours."""
+        import datetime as _dt
+        from memexos import pricing
+        return pricing.cost_usd(usage, self.section, at=_dt.datetime.now(_dt.timezone.utc))
 
     def _body(self, messages: list, tools: list, effort: str, schema: dict | None, final_json: bool = False) -> dict:
         body: dict = {"model": self.model(), "messages": messages}

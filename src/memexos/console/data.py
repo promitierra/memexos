@@ -61,7 +61,7 @@ def unpriced_backends(cfg) -> list[str]:
     return sorted(out)
 
 
-def usage_rows(calls) -> list[dict]:
+def usage_rows(calls, cfg=None) -> list[dict]:
     """Aggregate `model.call` events per backend:model: calls, tokens and cost.
 
     Tokens are measured, not guessed, so this table is useful even when no
@@ -83,6 +83,15 @@ def usage_rows(calls) -> list[dict]:
         if isinstance(d.get("cost_usd"), (int, float)):
             row["cost"] += d["cost_usd"]
             row["priced_calls"] += 1
+        elif cfg is not None:
+            # a call recorded before anyone set a price is still priceable now:
+            # the tokens and the timestamp are both in the event
+            from memexos import pricing
+            section = (cfg.section("backends") or {}).get(d.get("backend") or "") or {}
+            amount = pricing.cost_usd(tok, section, at=pricing.parse_ts(e.get("ts")))
+            if amount is not None:
+                row["cost"] += amount
+                row["priced_calls"] += 1
     for row in rows.values():
         row["cost"] = round(row["cost"], 4)
         row["seconds"] = round(row["seconds"], 1)
@@ -612,10 +621,21 @@ class Data:
         roles = list((self.cfg.get("models") or {}).keys())
         cost = collections.defaultdict(lambda: collections.defaultdict(float))
         calls = list(events.read(self.state, since=since, types=("model.call",)))
+        today = time.strftime("%Y-%m-%d")
+        cost_today = 0.0
         for e in calls:
             d = e.get("data") or {}
-            if isinstance(d.get("cost_usd"), (int, float)):
-                cost[e["ts"][:10]][d.get("role") or "other"] += d["cost_usd"]
+            amount = d.get("cost_usd") if isinstance(d.get("cost_usd"), (int, float)) else None
+            if amount is None:
+                # recorded before a price existed: price it now from its own tokens
+                from memexos import pricing
+                section = (self.cfg.section("backends") or {}).get(d.get("backend") or "") or {}
+                amount = pricing.cost_usd(d.get("tokens") or {}, section, at=pricing.parse_ts(e.get("ts")))
+            if amount is None:
+                continue
+            cost[e["ts"][:10]][d.get("role") or "other"] += amount
+            if e["ts"][:10] == today:
+                cost_today += amount
         reasons = collections.defaultdict(lambda: [0, 0])
         for name in fail_dirs:
             seen = set()
@@ -640,7 +660,7 @@ class Data:
                 # cost 0.00 and "no price configured" are different facts; the page must say which
                 "unpriced_backends": unpriced_backends(self.cfg),
                 "cost_priced": not unpriced_backends(self.cfg),
-                "model_usage": usage_rows(calls)}
+                "model_usage": usage_rows(calls, self.cfg), "cost_today": round(cost_today, 4)}
 
     # ------------------------------------------------------------ the owner's profile (opt-in)
     def profile(self, q: dict) -> dict:

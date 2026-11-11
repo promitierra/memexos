@@ -313,24 +313,48 @@ port = 8765
 profile_page = false
 
 [backends.amr]
+price_in = 0.3
+price_out = 1.2
+cache_discount = 0.02
+off_peak_factor = 0.5
+peak_hours_utc = "1-4,6-10"
+peak_weekdays_only = true
 api_key_env = "OPEN_DESIGN_API_KEY"
 model = "deepseek-v4.1-flash-eco"
 base_url = "https://amr-link.open-design.ai/v1"
 type = "openai"
 
 [backends.amr-pro]
+price_in = 1.32
+price_out = 3.96
+cache_discount = 0.02
+off_peak_factor = 0.5
+peak_hours_utc = "1-4,6-10"
+peak_weekdays_only = true
 api_key_env = "OPEN_DESIGN_API_KEY"
 model = "deepseek-v4-pro"
 base_url = "https://amr-link.open-design.ai/v1"
 type = "openai"
 
 [backends.amr-flash]
+price_in = 0.3
+price_out = 1.2
+cache_discount = 0.02
+off_peak_factor = 0.5
+peak_hours_utc = "1-4,6-10"
+peak_weekdays_only = true
 api_key_env = "OPEN_DESIGN_API_KEY"
 model = "deepseek-v4.1-flash"
 base_url = "https://amr-link.open-design.ai/v1"
 type = "openai"
 
 [backends.deepseek]
+price_in = 0.3
+price_out = 1.2
+cache_discount = 0.02
+off_peak_factor = 0.5
+peak_hours_utc = "1-4,6-10"
+peak_weekdays_only = true
 api_key_env = "DEEPSEEK_API_KEY_MEMEXOS"
 model = "deepseek-flash"
 base_url = "https://api.deepseek.com/v1"

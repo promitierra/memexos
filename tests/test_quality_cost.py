@@ -90,3 +90,19 @@ def test_rows_come_sorted_by_input_tokens():
 def test_tokens_survive_a_missing_usage_dict():
     rows = usage_rows([{"type": "model.call", "ts": "x", "data": {"backend": "a", "model": "b"}}])
     assert rows[0]["input"] == 0 and rows[0]["calls"] == 1
+
+
+def test_a_call_recorded_without_cost_is_priced_retroactively():
+    """History matters: the tokens and the timestamp are in the event, so an old
+    call can be priced once someone configures a price."""
+
+    class Cfg:
+        def section(self, name):
+            return {"deepseek": {"price_in": 0.3, "price_out": 1.2, "cache_discount": 0.02,
+                                 "off_peak_factor": 0.5, "peak_hours_utc": "1-4,6-10"}} if name == "backends" else {}
+
+    ev = call("deepseek", "deepseek-flash", 1_000_000, 0, 1_000_000)
+    ev["ts"] = "2026-11-11T12:00:00+0000"          # off-peak Wednesday
+    rows = usage_rows([ev], Cfg())
+    assert rows[0]["priced"] is True
+    assert rows[0]["cost"] == 0.75                  # (0.15 + 0.6) off-peak

@@ -20,7 +20,9 @@ function renderQuality(B, q, R) {
   const rate7 = recent.p + recent.f ? recent.p / (recent.p + recent.f) : null, rateAll = all.p + all.f ? all.p / (all.p + all.f) : null;
   const days = fillDays(q.gate2_days.map(d => ({label: d.day, p: d.pass, f: d.fail})), 21, ["p", "f"]).map(d => ({...d, r: d.p + d.f ? d.p / (d.p + d.f) : null}));
   const roles = q.roles, costs = fillDays(q.cost_days.map(d => ({label: d.day, ...d})), 21, roles), total = d => roles.reduce((a, r) => a + (d[r] || 0), 0);
-  const c7 = costs.slice(-7).reduce((a, d) => a + total(d), 0) / 7, today = LIVE.data ? LIVE.data.metrics.cost_today : total(costs[costs.length - 1]);
+  const c7 = costs.slice(-7).reduce((a, d) => a + total(d), 0) / 7;
+  // q.cost_today is priced from tokens, so it also counts calls recorded before a price existed
+  const today = q.cost_today != null ? q.cost_today : (LIVE.data ? LIVE.data.metrics.cost_today : total(costs[costs.length - 1]));
   // cost 0.00 with no prices configured is not 'free': the card says which backends are unpriced
   const priced = q.cost_priced !== false, unpriced = q.unpriced_backends || [];
   // a partial bill is still worth showing: hide the number only when there is nothing to show
