@@ -1,0 +1,23 @@
+# Gentleman Guardian Angel Configuration
+# https://github.com/your-org/gga
+#
+# Adapted for memexos: Python + a vanilla-JS console + TOML language packs.
+# Mirrors the setup used in design-system-pmo, with this repo's own shapes.
+
+PROVIDER="claude"
+
+# Python and its data, the console (plain JS/CSS/HTML), the installer, docs.
+# Locale packs are translations, not code: reviewing 1,200 strings per key is noise.
+FILE_PATTERNS="*.py,*.toml,*.js,*.css,*.html,*.sh,*.md"
+
+# local/ is the personal layer of this fork (see local/README.md): it must never
+# be reviewed as if it were upstream code. Generated or machine-written files go
+# with it.
+EXCLUDE_PATTERNS="local/*,uv.lock,*.jsonl,*.lock,src/memexos/locale/*,src/memexos/console/static/app/fonts/*"
+
+# The review bar for this project lives in CONTRIBUTING.md: tests without real
+# models, keys in en+zh, no personal data, ruff clean.
+RULES_FILE="CONTRIBUTING.md"
+
+STRICT_MODE="true"
+TIMEOUT="300"
