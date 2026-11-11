@@ -35,6 +35,21 @@ def state_dir(explicit: str | None) -> Path:
         return Path.home() / ".local" / "state" / "memexos"
 
 
+def load_backends() -> dict:
+    """Backend sections with their prices; empty when the config is unreachable."""
+    try:
+        import contextlib
+        import io
+
+        from memexos import config
+
+        # loading the config can print; stdout belongs to the report
+        with contextlib.redirect_stdout(io.StringIO()):
+            return config.load().section("backends") or {}
+    except Exception:  # noqa: BLE001 — the report must work with --state alone
+        return {}
+
+
 def load_events(state: Path, month: str | None) -> list[dict]:
     directory = state / "events"
     if not directory.is_dir():
@@ -59,7 +74,7 @@ def load_events(state: Path, month: str | None) -> list[dict]:
     return events
 
 
-def summarize(events: list[dict]) -> list[dict]:
+def summarize(events: list[dict], backends: dict | None = None) -> list[dict]:
     runs: dict[str, dict] = {}
     for ev in events:
         rid = ev.get("run") or ""
@@ -71,6 +86,7 @@ def summarize(events: list[dict]) -> list[dict]:
             "steps": defaultdict(int), "seconds_by_step": defaultdict(float),
             "gate1": None, "gate1_errors": 0, "gate1_warnings": 0,
             "gate2": None, "claims": None, "flagged": None, "pages": None,
+            "model_calls": 0, "tokens": {"input": 0, "cached": 0, "output": 0}, "priced_cost": None,
         })
         if ev.get("ts") and (not row["started"] or ev["ts"] < row["started"]):
             row["started"] = ev["ts"]
@@ -93,6 +109,21 @@ def summarize(events: list[dict]) -> list[dict]:
             warnings = data.get("warnings") or 0
             row["gate1_errors"] = errors if isinstance(errors, int) else len(errors)
             row["gate1_warnings"] = warnings if isinstance(warnings, int) else len(warnings)
+        elif kind == "model.call":
+            row["model_calls"] += 1
+            tok = data.get("tokens") or {}
+            row["tokens"]["input"] += int(tok.get("input_tokens") or 0)
+            row["tokens"]["cached"] += int(tok.get("cached_tokens") or 0)
+            row["tokens"]["output"] += int(tok.get("output_tokens") or 0)
+            try:
+                from memexos import pricing
+            except ImportError:              # the report still runs without the package installed
+                pricing = None
+            section = (backends or {}).get(data.get("backend") or "") or {}
+            if pricing is not None:
+                amount = pricing.cost_usd(tok, section, at=pricing.parse_ts(ev.get("ts")))
+                if amount is not None:
+                    row["priced_cost"] = round((row["priced_cost"] or 0) + amount, 6)
         elif kind == "gate2.result":
             row["gate2"] = data.get("passed")
         elif kind in ("selfcheck.counts", "selfcheck.result"):
@@ -102,6 +133,10 @@ def summarize(events: list[dict]) -> list[dict]:
             stats = data.get("stats") if isinstance(data.get("stats"), dict) else data
             if isinstance(stats, dict) and "added_pages" in stats:
                 row["pages"] = stats.get("added_pages")
+    for row in runs.values():
+        # a priced cost from the model calls beats the per-step figure, which is
+        # None whenever the call predates a configured price
+        row["cost"] = row["priced_cost"] if row["priced_cost"] is not None else row["cost_usd"]
     return sorted(runs.values(), key=lambda r: (r["started"], r["run"]))
 
 
@@ -151,7 +186,7 @@ def main(argv: list[str]) -> int:
     a = ap.parse_args(argv)
 
     events = load_events(state_dir(a.state), a.month)
-    rows = summarize(events)
+    rows = summarize(events, load_backends())
     if not rows:
         print("sin corridas en el event log", file=sys.stderr)
         return 2

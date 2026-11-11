@@ -33,6 +33,9 @@ def published_run() -> list[dict]:
          "data": {"passed": True}},
         {"ts": "2026-11-11T20:41:04", "run": "r1", "job": "ingest", "type": "publish",
          "data": {"stats": {"added_pages": 10}}},
+        {"ts": "2026-11-11T20:24:52", "run": "r1", "job": "ingest", "type": "model.call",
+         "data": {"backend": "deepseek", "model": "deepseek-flash", "seconds": 12.0,
+                  "tokens": {"input_tokens": 1000, "cached_tokens": 0, "output_tokens": 500}}},
         {"ts": "2026-11-11T20:41:05", "run": "r1", "job": "ingest", "type": "run.end",
          "data": {"seconds": 1237, "status": "ok"}},
     ]
