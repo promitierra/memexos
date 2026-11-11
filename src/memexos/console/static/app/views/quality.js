@@ -30,6 +30,8 @@ function renderQuality(B, q, R) {
   const todayShown = anyCost || !unpriced.length ? money(today) : esc(T("q.unpriced"));
   const todaySub = unpriced.length ? esc(T("q.unpriced_sub", {backends: unpriced.join(", ")}))
                                    : esc(T("q.today_sub", {c: money(c7)}));
+  // thousands separators: 8857382 reads as 8,857,382
+  const num0 = v => Number(v || 0).toLocaleString();
   const models = q.gate2_models, mtot = models.reduce((a, [, n]) => a + n, 0) || 1, frs = q.fail_reasons || [];
   const MCOL = ["#4f84ff", "#d5deea", "#d2a868", "#4cc7b6"];
   B.innerHTML = `<div class="qual">
@@ -52,9 +54,10 @@ function renderQuality(B, q, R) {
     <div class="glass card" data-in><h2 class="h">${esc(T("q.cost"))} <small>COST · 21D</small></h2><div class="sub">${esc(T("q.cost_sub"))}</div><div id="q-cost"></div></div>
     <div class="glass card" data-in><h2 class="h">${esc(T("q.usage_header"))} <small>30D</small></h2>
       <div class="sub">${esc(T("q.usage_sub"))}</div>
-      ${(q.model_usage || []).map(u => `<div class="s"><b>${esc(u.model)}</b> · ${u.calls} ${esc(T("q.calls"))} ·
-        ${u.input} / ${u.cached} / ${u.output} ${esc(T("q.tokens"))} ·
-        ${u.priced && u.cost ? (u.price_source === "list" ? "≈" : "") + money(u.cost) : esc(T("q.no_price"))}${u.price_source === "list" ? " " + esc(T("q.list_price")) : ""}</div>`).join("") || `<div class="s">—</div>`}
+      ${(q.model_usage || []).length ? `<table class="t">
+        <tr><th>${esc(T("q.col_model"))}</th><th class="r">${esc(T("q.calls"))}</th><th class="r">${esc(T("q.col_in"))}</th><th class="r">${esc(T("q.col_cache"))}</th><th class="r">${esc(T("q.col_out"))}</th><th class="r">${esc(T("q.col_cost"))}</th></tr>
+        ${q.model_usage.map(u => `<tr><td>${esc(u.model)}</td><td class="r mono">${num0(u.calls)}</td><td class="r mono">${num0(u.input)}</td><td class="r mono">${num0(u.cached)}</td><td class="r mono">${num0(u.output)}</td><td class="r mono">${u.priced && u.cost ? (u.price_source === "list" ? "≈" : "") + money(u.cost) : esc(T("q.no_price"))}</td></tr>`).join("")}
+      </table>` : `<div class="s">—</div>`}
     </div>
     <div class="glass card" data-in><h2 class="h">${esc(T("q.runs"))} <small>RUNS · 30D</small></h2><div class="sub">${esc(T("q.runs_sub"))}</div><div id="q-sc"></div></div>
   </div>

@@ -541,6 +541,11 @@ calls = "llamadas"
 tokens = "tokens"
 no_price = "sin precio"
 list_price = "(equivalente a precio de lista)"
+col_model = "Modelo"
+col_in = "Entrada"
+col_cache = "Caché leída"
+col_out = "Salida"
+col_cost = "Costo"
 
 [console.role]
 writer = "redactor"

@@ -1334,6 +1334,11 @@ calls = "次调用"
 tokens = "token"
 no_price = "未定价"
 list_price = "（按标价折算）"
+col_model = "模型"
+col_in = "输入"
+col_cache = "缓存读取"
+col_out = "输出"
+col_cost = "成本"
 
 [console.role]
 writer = "编写"

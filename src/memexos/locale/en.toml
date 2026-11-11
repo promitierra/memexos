@@ -1337,6 +1337,11 @@ calls = "calls"
 tokens = "tokens"
 no_price = "unpriced"
 list_price = "(list-price equivalent)"
+col_model = "Model"
+col_in = "Input"
+col_cache = "Cache read"
+col_out = "Output"
+col_cost = "Cost"
 
 [console.role]
 writer = "writer"
