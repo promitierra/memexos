@@ -18,7 +18,7 @@ import re
 import subprocess
 from pathlib import Path
 
-from memexos import i18n, judge, rawref
+from memexos import events, i18n, judge, rawref
 from memexos.search import text as T
 
 META_KEYS = re.compile(r"^(tags|created|updated|sources|aliases|domain|content_type|level|evidence|usage|durability|type|use_note)\s*:")
@@ -131,6 +131,8 @@ def run(cfg, stage: Path, base: str, raws: list[str], threshold: float | None = 
         return 2, "", i18n.t("selfcheck.too_few", got=sum(s is not None for s in scores), total=len(items))
     flagged = [(p, u, best[0] if best else "") for p, u, best in zip(scores, units, evid) if p is not None and p < threshold]
     summary = i18n.t("selfcheck.summary", total=len(units), flagged=len(flagged))
+    # the counts travel as numbers too: the benchmark report cannot parse a translated sentence
+    events.emit(cfg.paths.state, "selfcheck.counts", total=len(units), flagged=len(flagged))
     if not flagged:
         return 0, "", summary
     flagged.sort(key=lambda x: x[0])
