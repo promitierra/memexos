@@ -106,3 +106,26 @@ def test_a_call_recorded_without_cost_is_priced_retroactively():
     rows = usage_rows([ev], Cfg())
     assert rows[0]["priced"] is True
     assert rows[0]["cost"] == 0.75                  # (0.15 + 0.6) off-peak
+
+
+def test_two_providers_are_priced_with_their_own_table():
+    """The same tokens cost differently on two providers: the row must use its
+    own backend's prices, not one global price."""
+
+    class Cfg:
+        def section(self, name):
+            if name != "backends":
+                return {}
+            common = {"cache_discount": 0.02, "off_peak_factor": 0.5, "peak_hours_utc": "1-4,6-10"}
+            return {
+                "direct": {"price_in": 0.30, "price_out": 1.20, "price_source": "official", **common},
+                "gateway": {"price_in": 1.32, "price_out": 3.96, "price_source": "list", **common},
+            }
+
+    tokens = (1_000_000, 0, 1_000_000)
+    rows = usage_rows([call("direct", "m", *tokens), call("gateway", "m", *tokens)], Cfg())
+    by = {r["model"]: r for r in rows}
+    assert by["direct:m"]["cost"] == 0.75           # (0.15 + 0.60) off-peak
+    assert by["gateway:m"]["cost"] == 2.64          # (0.66 + 1.98) off-peak
+    assert by["direct:m"]["price_source"] == "official"
+    assert by["gateway:m"]["price_source"] == "list"

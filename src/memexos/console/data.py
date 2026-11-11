@@ -93,6 +93,8 @@ def usage_rows(calls, cfg=None) -> list[dict]:
                 row["cost"] += amount
                 row["priced_calls"] += 1
     for row in rows.values():
+        section = (cfg.section("backends") or {}).get(row["model"].split(":")[0], {}) if cfg is not None else {}
+        row["price_source"] = str((section or {}).get("price_source") or "")
         row["cost"] = round(row["cost"], 4)
         row["seconds"] = round(row["seconds"], 1)
         row["priced"] = row["priced_calls"] > 0
@@ -521,7 +523,40 @@ class Data:
     def run_list(self, q: dict) -> dict:
         hours = float(q.get("hours", "72"))
         units = runs.timeline(self.state, time.time() - hours * 3600)
+        self._price_runs(units)
         return {"now": time.time(), "runs": units[::-1]}
+
+    def _price_runs(self, units: list[dict]) -> None:
+        """Price a run from its model calls when the review recorded no cost.
+
+        The scatter plots time x cost; a null cost puts every point on the floor
+        and the chart then says nothing about the thing it exists to show.
+        """
+        # timeline() defaults cost to 0.0, so "not a number" never matched: a
+        # zero here means nobody priced the run, not that it was free
+        pending = [u for u in units if not u.get("cost")]
+        if not pending:
+            return
+        from memexos import pricing
+        wanted = {u.get("run") for u in pending if u.get("run")}
+        if not wanted:
+            return
+        total: dict[str, float] = collections.defaultdict(float)
+        since = min(float(u.get("t0") or 0) for u in pending) - 1
+        for e in events.read(self.state, since=since, types=("model.call",)):
+            if e.get("run") not in wanted:
+                continue
+            d = e.get("data") or {}
+            amount = d.get("cost_usd") if isinstance(d.get("cost_usd"), (int, float)) else None
+            if amount is None:
+                section = (self.cfg.section("backends") or {}).get(d.get("backend") or "") or {}
+                amount = pricing.cost_usd(d.get("tokens") or {}, section, at=pricing.parse_ts(e.get("ts")))
+            if amount is not None:
+                total[e["run"]] += amount
+        for u in pending:
+            amount = round(total.get(u.get("run") or "", 0.0), 4)
+            if amount:                      # leave a genuine zero alone
+                u["cost"] = amount
 
     def run_detail(self, q: dict) -> dict:
         rid = q.get("id", "")

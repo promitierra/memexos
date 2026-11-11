@@ -1336,6 +1336,7 @@ usage_sub = "Per backend and model: calls and tokens (input / cached / output). 
 calls = "calls"
 tokens = "tokens"
 no_price = "unpriced"
+list_price = "(list-price equivalent)"
 
 [console.role]
 writer = "writer"

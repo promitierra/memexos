@@ -540,6 +540,7 @@ usage_sub = "Por backend y modelo: llamadas y tokens (entrada / caché / salida)
 calls = "llamadas"
 tokens = "tokens"
 no_price = "sin precio"
+list_price = "(equivalente a precio de lista)"
 
 [console.role]
 writer = "redactor"

@@ -1333,6 +1333,7 @@ usage_sub = "按后端与模型：调用次数与 token（输入 / 缓存 / 输�
 calls = "次调用"
 tokens = "token"
 no_price = "未定价"
+list_price = "（按标价折算）"
 
 [console.role]
 writer = "编写"
