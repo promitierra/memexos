@@ -313,6 +313,7 @@ port = 8765
 profile_page = false
 
 [backends.amr]
+price_source = "list"
 price_in = 0.3
 price_out = 1.2
 cache_discount = 0.02
@@ -325,6 +326,7 @@ base_url = "https://amr-link.open-design.ai/v1"
 type = "openai"
 
 [backends.amr-pro]
+price_source = "list"
 price_in = 1.32
 price_out = 3.96
 cache_discount = 0.02
@@ -337,6 +339,7 @@ base_url = "https://amr-link.open-design.ai/v1"
 type = "openai"
 
 [backends.amr-flash]
+price_source = "list"
 price_in = 0.3
 price_out = 1.2
 cache_discount = 0.02
@@ -349,6 +352,7 @@ base_url = "https://amr-link.open-design.ai/v1"
 type = "openai"
 
 [backends.deepseek]
+price_source = "official"
 price_in = 0.3
 price_out = 1.2
 cache_discount = 0.02
