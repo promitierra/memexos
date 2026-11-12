@@ -128,6 +128,12 @@ def _route(cfg, role: str, kind: str, call, job: str, retries: int, backoff: flo
         if r.limited:
             _mark(cfg, name, r.tail)
             continue
+        if r.transient and later:
+            # A 5xx or an HTML error page from the gateway is not a verdict on the
+            # work: the next backend in the chain gets the same prompt. Giving up
+            # here threw away a whole batch that had already been written and paid for.
+            tried.append({"backend": name, "skipped": f"transient failure, next backend: {r.tail[:160]}"})
+            continue
         break        # a real failure (bad output, refusal): do not hop backends, report it
     if last is None:
         last = Result(ok=False, backend=",".join(names), tail="no backend available: " +

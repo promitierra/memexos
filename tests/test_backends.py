@@ -114,3 +114,10 @@ def test_jev_calls_are_recorded_with_cost(home, monkeypatch):
     assert [c["tokens"] for c in calls] == [{"input_tokens": 5000, "calls": 5}, {"input_tokens": 1000, "calls": 1}]
     assert calls[0]["backend"] == "jev" and calls[0]["role"] == "judge"
     assert calls[0]["cost_usd"] == pytest.approx(5000 * 0.042 / 1e6)
+
+
+def test_exhausted_transient_failure_hops_to_the_next_backend(fake, tmp_path):
+    """A 5xx or an HTML error page is not a verdict on the work: after its retries, the next backend gets the prompt."""
+    Fake.script = {"a": ["transient", "transient", "transient"], "b": ["ok"]}
+    r = call(fake, tmp_path)
+    assert r.ok and r.backend == "b" and Fake.calls == ["a", "a", "a", "b"]
