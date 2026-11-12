@@ -122,7 +122,8 @@ def snapshot(cfg, tz_offset: int = 0) -> dict:
     state_key = "busy" if live else "pending" if pend else "idle"
     return {"time": time.strftime("%Y-%m-%d %H:%M:%S"), "state": i18n.t("status.state_" + state_key), "state_key": state_key,
             "doing": doing, "alerts": alerts, "warn": warn, "done": done, "inbox": box, "pending": pend, "running": live,
-            "published_today": len(pubs), "cost_today": round(cost, 2), "paused": (cfg.paths.state / "PAUSE").exists()}
+            "published_today": len(pubs), "cost_today": None if cost is None else round(cost, 4),
+            "paused": (cfg.paths.state / "PAUSE").exists()}
 
 
 def render(cfg) -> str:
