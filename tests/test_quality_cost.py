@@ -196,3 +196,8 @@ def test_the_snapshot_day_is_the_readers_day():
     assert ev.today(0) == time.strftime("%Y-%m-%d", time.gmtime())
     assert ev.day_of("2026-11-12T01:00:00+0000", -300) == "2026-11-11"
     assert ev.day_of("2026-11-12T01:00:00+0000", 0) == "2026-11-12"
+
+
+def test_the_day_cut_does_not_depend_on_the_process_timezone():
+    """timegm, not mktime: a container in UTC and a laptop in Bogotá must agree."""
+    assert events.today(0) == time.strftime("%Y-%m-%d", time.gmtime())

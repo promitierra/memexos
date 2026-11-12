@@ -7,6 +7,7 @@ The console uses snapshot() for the same data.
 from __future__ import annotations
 
 import argparse
+import calendar
 import json
 import os
 import subprocess
@@ -61,8 +62,9 @@ def snapshot(cfg, tz_offset: int = 0) -> dict:
     the "today" counters: the console passes the reader's, the CLI passes its own."""
     now = time.time()
     day = events.today(tz_offset)
-    # midnight of that day, as an epoch: the date parsed as UTC, shifted back by the offset
-    t_day = time.mktime(time.strptime(day, "%Y-%m-%d")) - tz_offset * 60
+    # midnight of that day as an epoch: timegm, not mktime, so the answer does not
+    # depend on the timezone the process happens to run in
+    t_day = calendar.timegm(time.strptime(day, "%Y-%m-%d")) - tz_offset * 60
     today = list(events.read(cfg.paths.state, since=t_day))
     doing, alerts, warn, done = [], [], [], []
     live = runs.running(cfg.paths.state)
