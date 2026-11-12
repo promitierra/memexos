@@ -80,18 +80,18 @@ def usage_rows(calls, cfg=None) -> list[dict]:
         row["cached"] += int(tok.get("cached_tokens") or 0)
         row["output"] += int(tok.get("output_tokens") or 0)
         row["seconds"] += float(d.get("seconds") or 0)
-        if isinstance(d.get("cost_usd"), (int, float)):
-            row["cost"] += d["cost_usd"]
-            row["priced_calls"] += 1
-        elif cfg is not None:
+        if cfg is not None:
             # a call recorded before anyone set a price is still priceable now:
             # the tokens and the timestamp are both in the event
             from memexos import pricing
             section = (cfg.section("backends") or {}).get(d.get("backend") or "") or {}
-            amount = pricing.cost_usd(tok, section, at=pricing.parse_ts(e.get("ts")))
+            amount = pricing.event_cost(e, section)
             if amount is not None:
                 row["cost"] += amount
                 row["priced_calls"] += 1
+        elif isinstance(d.get("cost_usd"), (int, float)):
+            row["cost"] += d["cost_usd"]
+            row["priced_calls"] += 1
     for row in rows.values():
         section = (cfg.section("backends") or {}).get(row["model"].split(":")[0], {}) if cfg is not None else {}
         row["price_source"] = str((section or {}).get("price_source") or "")
@@ -462,7 +462,7 @@ class Data:
 
     def live(self, q: dict) -> dict:
         from memexos import status
-        snap = status.snapshot(self.cfg)
+        snap = status.snapshot(self.cfg, self.tz_offset(q))
         units = runs.timeline(self.state, time.time() - 6 * 3600)
         act = runs.active_stages(self.state, units)
         searching = [e for e in events.read(self.state, since=time.time() - 90, types=("search",)) if e.get("job") != "console"]
@@ -491,7 +491,7 @@ class Data:
             "running": [{k: u[k] for k in ("id", "job", "t0", "active")} for u in units if u["status"] == "running"],
             "stages": [{"id": s, "active": s in act, "jobs": act.get(s, [])} for s in RING],
             "metrics": {"wiki": len(self.pages()), "raw": len(self.raw_files()), "pending": len(snap["pending"]),
-                        "cost_today": snap["cost_today"], "published_today": snap["published_today"],
+                        "cost_today": self.priced_cost_today(q), "published_today": snap["published_today"],
                         "gate2_pass": g2["pass"], "gate2_fail": g2["fail"],
                         "usage_24h": sum(1 for e in ev if (e.get("session_last") or "") >= day_ago), "usage_30d": len(ev),
                         "helped": round(sum(v in ("helped", "honest_gap") for v in clear) / len(clear), 3) if clear else None},
@@ -520,6 +520,47 @@ class Data:
             return {r["key"]: r["verdict"] for r in read_jsonl(p) if "key" in r}
         return self.cached("verdicts", self.mtime(p), build)
 
+
+    def tz_offset(self, q: dict | None) -> int:
+        """The browser's offset from UTC, in minutes east (Bogota = -300).
+
+        The console renders every timestamp in the browser's timezone, so a day
+        cut in the container's UTC disagrees with the rows on screen: in Bogota
+        the counter reset at 19:00, six hours before the day ended.
+        """
+        try:
+            return int((q or {}).get("tz") or 0)
+        except (TypeError, ValueError):
+            return 0
+
+    def today_label(self, offset: int) -> str:
+        """The reader's day. The ownership of that cut lives in events."""
+        return events.today(offset)
+
+    def day_of(self, ts: str, offset: int) -> str:
+        return events.day_of(ts, offset)
+
+    def price_event(self, ev: dict) -> float | None:
+        """What one event cost. The arithmetic lives in pricing; this only finds the backend."""
+        from memexos import pricing
+
+        d = ev.get("data") or {}
+        section = (self.cfg.section("backends") or {}).get(d.get("backend") or "") or {}
+        return pricing.event_cost(ev, section)
+
+    def priced_cost_today(self, q: dict | None = None) -> float:
+        """Today's spend, including calls recorded before a price existed."""
+        offset = self.tz_offset(q)
+        today = self.today_label(offset)
+        total = 0.0
+        for e in events.read(self.state, since=time.time() - 2 * 86400, types=("model.call",)):
+            if self.day_of(e.get("ts") or "", offset) != today:
+                continue
+            amount = self.price_event(e)
+            if amount:
+                total += amount
+        return round(total, 4)
+
     def run_list(self, q: dict) -> dict:
         hours = float(q.get("hours", "72"))
         units = runs.timeline(self.state, time.time() - hours * 3600)
@@ -537,7 +578,6 @@ class Data:
         pending = [u for u in units if not u.get("cost")]
         if not pending:
             return
-        from memexos import pricing
         wanted = {u.get("run") for u in pending if u.get("run")}
         if not wanted:
             return
@@ -546,13 +586,9 @@ class Data:
         for e in events.read(self.state, since=since, types=("model.call",)):
             if e.get("run") not in wanted:
                 continue
-            d = e.get("data") or {}
-            amount = d.get("cost_usd") if isinstance(d.get("cost_usd"), (int, float)) else None
-            if amount is None:
-                section = (self.cfg.section("backends") or {}).get(d.get("backend") or "") or {}
-                amount = pricing.cost_usd(d.get("tokens") or {}, section, at=pricing.parse_ts(e.get("ts")))
+            amount = self.price_event(e)
             if amount is not None:
-                total[e["run"]] += amount
+                total[e.get("run") or ""] += amount
         for u in pending:
             amount = round(total.get(u.get("run") or "", 0.0), 4)
             if amount:                      # leave a genuine zero alone
@@ -564,6 +600,7 @@ class Data:
         u = next((x for x in units if x["id"] == rid), None)
         if not u:
             return {"error": "not_found"}
+        self._price_runs([u])
         t1 = (u["t1"] or time.time()) + 1
         log = []
         for ev in events.read(self.state, since=u["t0"] - 1, run=u["run"]):
@@ -572,6 +609,10 @@ class Data:
                 break
             if ev.get("type") in ("run.start", "run.end"):
                 continue
+            if ev.get("type") == "model.call" and not isinstance((ev.get("data") or {}).get("cost_usd"), (int, float)):
+                amount = self.price_event(ev)          # the renderer prints {cost} from this field
+                if amount is not None:
+                    ev.setdefault("data", {})["cost_usd"] = amount
             log.append({"t": t, "kind": event_kind(ev), "text": events.render(ev, job=False)[:1200]})
         from memexos.pipeline import report
         reps = []
@@ -642,6 +683,7 @@ class Data:
     def quality(self, q: dict) -> dict:
         from memexos.pipeline import report
         since = time.time() - 60 * 86400
+        offset = self.tz_offset(q)
         days = collections.defaultdict(lambda: {"pass": 0, "fail": 0, "unfinished": 0})
         rechecks = {"pass": 0, "fail": 0, "unfinished": 0}
         models = collections.Counter()
@@ -649,27 +691,23 @@ class Data:
         for e in events.read(self.state, since=since, types=("gate2.result",)):
             d = e.get("data") or {}
             res = "pass" if d.get("passed") is True else "fail" if d.get("passed") is False else "unfinished"
-            (days[e["ts"][:10]] if d.get("mode") == "ingest" else rechecks)[res] += 1
+            (days[self.day_of(e.get("ts") or "", offset)] if d.get("mode") == "ingest" else rechecks)[res] += 1
             models[d.get("model") or d.get("backend") or "?"] += 1
             if d.get("mode") == "ingest" and res == "fail" and events._epoch(e["ts"]) > time.time() - 30 * 86400:
                 fail_dirs.append(d.get("dir"))
         roles = list((self.cfg.get("models") or {}).keys())
         cost = collections.defaultdict(lambda: collections.defaultdict(float))
         calls = list(events.read(self.state, since=since, types=("model.call",)))
-        today = time.strftime("%Y-%m-%d")
+        today = self.today_label(offset)
         cost_today = 0.0
         for e in calls:
             d = e.get("data") or {}
-            amount = d.get("cost_usd") if isinstance(d.get("cost_usd"), (int, float)) else None
-            if amount is None:
-                # recorded before a price existed: price it now from its own tokens
-                from memexos import pricing
-                section = (self.cfg.section("backends") or {}).get(d.get("backend") or "") or {}
-                amount = pricing.cost_usd(d.get("tokens") or {}, section, at=pricing.parse_ts(e.get("ts")))
+            amount = self.price_event(e)
             if amount is None:
                 continue
-            cost[e["ts"][:10]][d.get("role") or "other"] += amount
-            if e["ts"][:10] == today:
+            day = self.day_of(e.get("ts") or "", offset)
+            cost[day][d.get("role") or "other"] += amount
+            if day == today:
                 cost_today += amount
         reasons = collections.defaultdict(lambda: [0, 0])
         for name in fail_dirs:

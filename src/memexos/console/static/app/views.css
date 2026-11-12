@@ -333,3 +333,11 @@ nav#nav a[data-v="knowledge"].on .ni { stroke: var(--blue); fill: var(--blue); }
 .ph .other b { font-weight: 500; color: var(--ink2); }
 #sys { max-width: 300px; } #sys span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ph h1 { white-space: nowrap; flex: none; } .ph .q { min-width: 0; }
+
+/* Dense table inside a grid column: without a fixed layout the long model names
+   push the table past the card and over the next panel. */
+.qual > .card { min-width: 0; }
+table.t.mu { table-layout: fixed; width: 100%; }
+table.t.mu th, table.t.mu td { padding-left: 6px; padding-right: 6px; }
+table.t.mu th:first-child, table.t.mu td:first-child { width: 34%; word-break: break-word; }
+table.t.mu th { white-space: normal; line-height: 1.2; font-size: 9.5px; letter-spacing: .06em; }

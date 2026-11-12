@@ -164,6 +164,13 @@ def emit(state_dir: Path, type: str, job: str | None = None, **data: Any) -> dic
     return ev
 
 
+def _money(value: float) -> str:
+    """The one money formatter lives in pricing; rendering only borrows it."""
+    from memexos import pricing
+
+    return pricing.money(value)
+
+
 def render(ev: dict, lang: str | None = None, job: bool = True) -> str:
     """One readable line from the language pack. Lists also give {key_n} (their length); a boolean `passed`
     picks the variant event.<type>_pass / _fail; steps get {label} from step.<name>."""
@@ -179,7 +186,7 @@ def render(ev: dict, lang: str | None = None, job: bool = True) -> str:
     if ev["type"].startswith("step."):
         data["label"] = i18n.t(f"step.{raw.get('name', '')}", lang) if i18n.has(f"step.{raw.get('name', '')}") else raw.get("name", "")
     if isinstance(raw.get("cost_usd"), (int, float)):
-        data["cost"] = f"${raw['cost_usd']:.2f}"
+        data["cost"] = _money(raw["cost_usd"])
     else:
         data["cost"] = "-"
     keys = [f"event.{ev['type']}"]
@@ -237,6 +244,26 @@ def _offset_since(f, since: float) -> int:
         f.readline()
         return f.tell()
     return 0
+
+
+def today(offset_minutes: int = 0) -> str:
+    """The reader's calendar day as YYYY-MM-DD.
+
+    `offset_minutes` is east of UTC: Bogota is -300, so its day ends at 05:00
+    UTC. A day cut in the process's own timezone disagrees with the timestamps
+    the console renders, and the counter resets hours before the day is over.
+    """
+    return time.strftime("%Y-%m-%d", time.gmtime(time.time() + offset_minutes * 60))
+
+
+def day_of(ts: str, offset_minutes: int = 0) -> str:
+    """The calendar day an event belongs to, in the reader's timezone."""
+    from memexos import pricing
+
+    parsed = pricing.parse_ts(ts)
+    if parsed is None:
+        return ""
+    return time.strftime("%Y-%m-%d", time.gmtime(parsed.timestamp() + offset_minutes * 60))
 
 
 def _epoch(ts: str) -> float:

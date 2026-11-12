@@ -89,3 +89,42 @@ def test_is_peak_boundaries():
     assert pricing.is_peak(dt.datetime(2026, 11, 11, 1, 0, tzinfo=dt.timezone.utc), hours) is True
     assert pricing.is_peak(dt.datetime(2026, 11, 11, 3, 59, tzinfo=dt.timezone.utc), hours) is True
     assert pricing.is_peak(dt.datetime(2026, 11, 11, 4, 0, tzinfo=dt.timezone.utc), hours) is False
+
+
+# ------------------------------------------------ the event and the printed form
+
+
+def test_a_recorded_cost_wins_over_pricing_it_again():
+    """The backend measured it; re-pricing would second-guess the invoice."""
+    ev = {"ts": "2026-11-11T21:00:00+0000",
+          "data": {"backend": "amr", "cost_usd": 0.5, "tokens": {"input_tokens": 1_000_000}}}
+    assert pricing.event_cost(ev, FLASH) == 0.5
+
+
+def test_an_unpriced_event_is_priced_from_its_tokens_and_timestamp():
+    """A call made before the price existed is not a free call."""
+    ev = {"ts": "2026-11-11T21:00:00+0000",
+          "data": {"backend": "amr", "tokens": {"input_tokens": 31_397 + 9_472, "cached_tokens": 9_472,
+                                                "output_tokens": 13_424}}}
+    assert pricing.event_cost(ev, FLASH) == 0.012792
+
+
+def test_an_event_whose_backend_has_no_price_is_unknown_not_zero():
+    ev = {"ts": "2026-11-11T21:00:00+0000", "data": {"backend": "x", "tokens": {"input_tokens": 10}}}
+    assert pricing.event_cost(ev, {}) is None
+
+
+def test_money_keeps_four_decimals_below_a_cent():
+    """Two decimals would print every model call as "$0.00", which reads as free."""
+    assert pricing.money(0.0007) == "$0.0007"
+    assert pricing.money(0.0014) == "$0.0014"
+
+
+def test_money_keeps_two_decimals_from_a_cent_up():
+    assert pricing.money(1.5033) == "$1.50"
+    assert pricing.money(0.01) == "$0.01"
+
+
+def test_money_prints_a_real_zero_but_an_unknown_as_a_dash():
+    assert pricing.money(0) == "$0.00"
+    assert pricing.money(None) == "-"

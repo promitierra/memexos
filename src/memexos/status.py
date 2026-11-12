@@ -13,7 +13,7 @@ import subprocess
 import sys
 import time
 
-from memexos import backends, events, i18n, runs
+from memexos import backends, events, i18n, pricing, runs
 from memexos.pipeline.stage import ledger, pending_raw
 
 TTY = sys.stdout.isatty()
@@ -36,10 +36,33 @@ def step_label(step: str | None) -> str:
     return i18n.t(f"step.{step}") if step and i18n.has(f"step.{step}") else (step or "…")
 
 
-def snapshot(cfg) -> dict:
+def _cost_today(cfg, today: list[dict]) -> float | None:
+    """Today's model spend: recorded cost where it exists, priced from tokens where it does not.
+
+    Summing only the recorded `cost_usd` reports every call made before a price
+    was configured as free — the same understatement the console had.
+    """
+    sections = cfg.section("backends") or {}
+    total, seen = 0.0, False
+    for e in today:
+        if e["type"] != "model.call":
+            continue
+        seen = True
+        backend = (e.get("data") or {}).get("backend") or ""
+        amount = pricing.event_cost(e, sections.get(backend) or {})
+        if amount is not None:
+            total += amount
+    # a day with no calls really cost zero; a day whose calls have no price is unknown
+    return total if total or not seen else None
+
+
+def snapshot(cfg, tz_offset: int = 0) -> dict:
+    """What is happening now. `tz_offset` (minutes east of UTC) picks the day for
+    the "today" counters: the console passes the reader's, the CLI passes its own."""
     now = time.time()
-    day = time.strftime("%Y-%m-%d")
-    t_day = time.mktime(time.strptime(day, "%Y-%m-%d"))
+    day = events.today(tz_offset)
+    # midnight of that day, as an epoch: the date parsed as UTC, shifted back by the offset
+    t_day = time.mktime(time.strptime(day, "%Y-%m-%d")) - tz_offset * 60
     today = list(events.read(cfg.paths.state, since=t_day))
     doing, alerts, warn, done = [], [], [], []
     live = runs.running(cfg.paths.state)
@@ -76,14 +99,14 @@ def snapshot(cfg) -> dict:
     reviews = [e for e in today if e["type"] == "gate2.result"]
     admitted = sum(e["data"].get("admit", 0) for e in today if e["type"] == "intake.batch")
     captured = sum(1 for e in today if e["type"] in ("capture.done", "capture.video"))
-    cost = sum(e["data"].get("cost_usd") or 0 for e in today if e["type"] == "model.call")
+    cost = _cost_today(cfg, today)
     done.append(i18n.t("status.published", n=len(pubs)))
     if reviews:
         done.append(i18n.t("status.reviews", n=len(reviews), passed=sum(1 for e in reviews if e["data"].get("passed")),
                            failed=sum(1 for e in reviews if e["data"].get("code") == 1), incomplete=sum(1 for e in reviews if e["data"].get("code") == 2)))
     if admitted or captured:
         done.append(i18n.t("status.collected", admitted=admitted, captured=captured))
-    done.append(i18n.t("status.cost", usd=f"{cost:.2f}"))
+    done.append(i18n.t("status.cost", usd=pricing.money(cost)))
 
     try:
         from memexos import inbox

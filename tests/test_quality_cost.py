@@ -1,6 +1,9 @@
 """Cost 0.00 and "no price configured" are different facts, and the console says which."""
 
-from memexos.console.data import unpriced_backends, usage_rows
+import time
+
+from memexos import events
+from memexos.console.data import Data, unpriced_backends, usage_rows
 
 
 class FakeCfg:
@@ -129,3 +132,67 @@ def test_two_providers_are_priced_with_their_own_table():
     assert by["gateway:m"]["cost"] == 2.64          # (0.66 + 1.98) off-peak
     assert by["direct:m"]["price_source"] == "official"
     assert by["gateway:m"]["price_source"] == "list"
+
+
+# ---------------------------------------------------- the day and the cents
+
+
+def test_the_day_belongs_to_the_reader_not_the_container():
+    """02:00 UTC is still 21:00 of the previous day in Bogotá."""
+    d = object.__new__(Data)                      # day_of reads no state
+    iso = "2026-11-12T02:00:00+0000"
+    assert d.day_of(iso, 0) == "2026-11-12"
+    assert d.day_of(iso, -300) == "2026-11-11"
+
+
+def test_a_sub_cent_model_call_does_not_render_as_free():
+    """$0.0007 rounded to two decimals reads as "this call cost nothing"."""
+    line = events.render({"type": "model.call", "job": "ingest",
+                          "data": {"role": "judge", "backend": "deepseek", "model": "deepseek-flash",
+                                   "seconds": 6.2, "cost_usd": 0.0007}})
+    assert line.endswith("$0.0007")      # four decimals, not a truncated "$0.00"
+
+
+def test_a_dollar_cost_keeps_two_decimals():
+    line = events.render({"type": "model.call", "job": "ingest",
+                          "data": {"role": "worker", "backend": "amr", "model": "m",
+                                   "seconds": 1.0, "cost_usd": 1.5033}})
+    assert "$1.50" in line
+
+
+def test_the_status_line_prices_calls_that_recorded_no_cost():
+    """Summing only the recorded cost reported every un-priced call as free."""
+    from memexos import status
+
+    cfg = FakeCfg({"amr": {"price_in": 0.30, "price_out": 1.20, "price_cache_read": 0.006, "plan_multiplier": 0.5}})
+    today = [
+        {"type": "model.call", "ts": "2026-11-11T21:00:00+0000",
+         "data": {"backend": "amr", "tokens": {"input_tokens": 31_397 + 9_472, "cached_tokens": 9_472,
+                                               "output_tokens": 13_424}}},
+        {"type": "publish", "data": {}},
+    ]
+    assert status._cost_today(cfg, today) == 0.012792
+
+
+def test_a_day_without_calls_costs_a_real_zero():
+    from memexos import status
+
+    assert status._cost_today(FakeCfg({}), []) == 0.0
+
+
+def test_a_day_whose_calls_have_no_price_is_unknown_not_free():
+    """The one fact that must never be rounded to $0.00."""
+    from memexos import status
+
+    today = [{"type": "model.call", "ts": "2026-11-11T21:00:00+0000",
+              "data": {"backend": "amr", "tokens": {"input_tokens": 10}}}]
+    assert status._cost_today(FakeCfg({}), today) is None
+
+
+def test_the_snapshot_day_is_the_readers_day():
+    """01:00 UTC on the 12th is 20:00 of the 11th in Bogotá, and the counter must agree."""
+    from memexos import events as ev
+
+    assert ev.today(0) == time.strftime("%Y-%m-%d", time.gmtime())
+    assert ev.day_of("2026-11-12T01:00:00+0000", -300) == "2026-11-11"
+    assert ev.day_of("2026-11-12T01:00:00+0000", 0) == "2026-11-12"

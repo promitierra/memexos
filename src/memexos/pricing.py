@@ -101,6 +101,35 @@ def cost_usd(tokens: dict, prices: dict, at: dt.datetime | None = None) -> float
     return round(total, 6)
 
 
+def event_cost(ev: dict, section: dict) -> float | None:
+    """What one `model.call` event cost.
+
+    A recorded `cost_usd` wins: the backend measured it when it ran. Otherwise
+    the call is priced now from its tokens and timestamp, so a call made before
+    anyone configured a price is not reported as free.
+    """
+    data = ev.get("data") or {}
+    if isinstance(data.get("cost_usd"), (int, float)):
+        return data["cost_usd"]
+    return cost_usd(data.get("tokens") or {}, section, at=parse_ts(ev.get("ts")))
+
+
+def money(value: float | None) -> str:
+    """A cost written with enough digits to be true.
+
+    Two decimals turn every sub-cent model call into "$0.00", which reads as
+    free and hides exactly what the ledger exists to show. Unknown is not zero,
+    so `None` prints as a dash.
+    """
+    if value is None:
+        return "-"
+    if value >= 0.01 or value <= -0.01:
+        return f"${value:,.2f}"
+    if value:
+        return f"${value:.4f}"
+    return "$0.00"
+
+
 def parse_ts(value: str | None) -> dt.datetime | None:
     """Parse an event timestamp ('2026-11-11T20:04:28+0000' or ISO) into UTC."""
     if not value:

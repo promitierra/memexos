@@ -546,6 +546,10 @@ col_in = "Entrada"
 col_cache = "Caché leída"
 col_out = "Salida"
 col_cost = "Costo"
+col_calls_short = "Llam."
+col_in_short = "Ent."
+col_cache_short = "Caché"
+col_out_short = "Sal."
 
 [console.role]
 writer = "redactor"
@@ -610,3 +614,9 @@ port_busy = "El puerto {port} está en uso ({why}). Elige otro con memex console
 
 [event]
 "selfcheck.counts" = "{total} oraciones verificadas, {flagged} marcadas"
+
+[status]
+published = "lotes publicados: {n}"
+reviews = "revisiones: {n} ({passed} aprobadas, {failed} fallidas, {incomplete} sin completar)"
+collected = "recolectado: {admitted} admitidos, {captured} capturados"
+cost = "costo de modelos hoy (precios de API): {usd}"

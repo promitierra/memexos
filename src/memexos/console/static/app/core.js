@@ -8,8 +8,18 @@ const $ = (s, el = document) => el.querySelector(s), $$ = (s, el = document) => 
 const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"}[c]));
 const fmt = n => (n ?? 0).toLocaleString(LOCALE);
 const pct = x => x == null || isNaN(x) ? "—" : Math.round(x * 100) + "%";
-const money = x => "$" + (x || 0).toFixed((x || 0) >= 100 ? 0 : 2);
-const api = (p, q = {}) => fetch(p + "?" + new URLSearchParams(q)).then(r => r.json());
+// Mirrors pricing.money(): two decimals are real money, four keep a sub-cent
+// call from printing as "$0.00", which reads as free.
+const money = x => {
+  const v = Number(x) || 0;
+  if (Math.abs(v) >= 100) return "$" + v.toFixed(0);
+  if (Math.abs(v) >= 0.01) return "$" + v.toFixed(2);
+  return v ? "$" + v.toFixed(4) : "$0.00";
+};
+// Minutes east of UTC, sent with every request: "today" is the reader's day,
+// not the container's. Bogota is -300, so its day ends at 05:00 UTC.
+const TZ = -new Date().getTimezoneOffset();
+const api = (p, q = {}) => fetch(p + "?" + new URLSearchParams({tz: TZ, ...q})).then(r => r.json());
 const reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;
 const cssv = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
 const rgba = (hex, a) => { const n = parseInt(hex.replace("#", ""), 16); return `rgba(${n >> 16},${(n >> 8) & 255},${n & 255},${a})`; };

@@ -32,6 +32,17 @@ function renderQuality(B, q, R) {
                                    : esc(T("q.today_sub", {c: money(c7)}));
   // thousands separators: 8857382 reads as 8,857,382
   const num0 = v => Number(v || 0).toLocaleString();
+  // six numeric columns do not fit a card: 8,501,504 reads as 8.5M and the exact
+  // value stays one hover away, so nothing is lost by shortening it
+  const numC = v => {
+    const n = Number(v || 0);
+    if (n >= 1e6) return (n / 1e6).toFixed(2).replace(/\.?0+$/, "") + "M";
+    if (n >= 1e4) return Math.round(n / 1e3) + "k";
+    return num0(n);
+  };
+  // spend per backend, so BUDGET answers "which model is eating the budget"
+  const byBackend = {};
+  (q.model_usage || []).forEach(u => { const b = String(u.model).split(":")[0]; byBackend[b] = (byBackend[b] || 0) + (u.priced ? u.cost : 0); });
   const models = q.gate2_models, mtot = models.reduce((a, [, n]) => a + n, 0) || 1, frs = q.fail_reasons || [];
   const MCOL = ["#4f84ff", "#d5deea", "#d2a868", "#4cc7b6"];
   B.innerHTML = `<div class="qual">
@@ -41,7 +52,7 @@ function renderQuality(B, q, R) {
     <div class="glass card" data-in><h2 class="h">${esc(T("q.why"))} <small>WHY · 30D</small></h2><div class="sub">${esc(T("q.why_sub", {n: q.fail_reports_30d}))}</div><div id="q-why"></div></div>
     <div class="side">
       <div class="glass card" data-in><h2 class="h">${esc(T("q.budget"))} <small>BUDGET</small></h2>
-        ${q.backends.filter(b => b.available).map(b => `<div class="qrow"><div class="t"><span>${esc(b.name)}</span><span class="badge ${b.exhausted ? "crit" : "ok"}">${b.exhausted ? "✕ " + esc(T("q.out")) : "✓ " + esc(T("q.ok"))}</span></div>
+        ${q.backends.filter(b => b.available).map(b => `<div class="qrow"><div class="t"><span>${esc(b.name)}</span><span class="mono muted" style="margin-left:auto;margin-right:8px">${byBackend[b.name] ? money(byBackend[b.name]) : esc(T("q.no_price"))}</span><span class="badge ${b.exhausted ? "crit" : "ok"}">${b.exhausted ? "✕ " + esc(T("q.out")) : "✓ " + esc(T("q.ok"))}</span></div>
           ${b.exhausted && b.until ? `<div class="s">${esc(T("q.out_since", {t: b.until}))}</div>` : ""}</div>`).join("") || `<div class="s">${esc(T("q.no_backends"))}</div>`}
         <div class="qrow"><div class="t"><span>${esc(T("q.today"))}</span><b>${todayShown}</b></div>
           ${bullet(today, Math.max(today, c7) * 1.4 || 1, {ref: c7, refLabel: T("q.avg7"), fmtV: money, color: today > c7 * 1.3 ? "var(--warn)" : "var(--accent-mark)"})}
@@ -54,9 +65,9 @@ function renderQuality(B, q, R) {
     <div class="glass card" data-in><h2 class="h">${esc(T("q.cost"))} <small>COST · 21D</small></h2><div class="sub">${esc(T("q.cost_sub"))}</div><div id="q-cost"></div></div>
     <div class="glass card" data-in><h2 class="h">${esc(T("q.usage_header"))} <small>30D</small></h2>
       <div class="sub">${esc(T("q.usage_sub"))}</div>
-      ${(q.model_usage || []).length ? `<table class="t">
-        <tr><th>${esc(T("q.col_model"))}</th><th class="r">${esc(T("q.calls"))}</th><th class="r">${esc(T("q.col_in"))}</th><th class="r">${esc(T("q.col_cache"))}</th><th class="r">${esc(T("q.col_out"))}</th><th class="r">${esc(T("q.col_cost"))}</th></tr>
-        ${q.model_usage.map(u => `<tr><td>${esc(u.model)}</td><td class="r mono">${num0(u.calls)}</td><td class="r mono">${num0(u.input)}</td><td class="r mono">${num0(u.cached)}</td><td class="r mono">${num0(u.output)}</td><td class="r mono">${u.priced && u.cost ? (u.price_source === "list" ? "≈" : "") + money(u.cost) : esc(T("q.no_price"))}</td></tr>`).join("")}
+      ${(q.model_usage || []).length ? `<table class="t mu">
+        <tr><th>${esc(T("q.col_model"))}</th><th class="r" title="${esc(T("q.calls"))}">${esc(T("q.col_calls_short"))}</th><th class="r" title="${esc(T("q.col_in"))}">${esc(T("q.col_in_short"))}</th><th class="r" title="${esc(T("q.col_cache"))}">${esc(T("q.col_cache_short"))}</th><th class="r" title="${esc(T("q.col_out"))}">${esc(T("q.col_out_short"))}</th><th class="r">${esc(T("q.col_cost"))}</th></tr>
+        ${q.model_usage.map(u => `<tr><td>${esc(u.model)}</td><td class="r mono">${num0(u.calls)}</td><td class="r mono" title="${num0(u.input)}">${numC(u.input)}</td><td class="r mono" title="${num0(u.cached)}">${numC(u.cached)}</td><td class="r mono" title="${num0(u.output)}">${numC(u.output)}</td><td class="r mono">${u.priced && u.cost ? (u.price_source === "list" ? "≈" : "") + money(u.cost) : esc(T("q.no_price"))}</td></tr>`).join("")}
       </table>` : `<div class="s">—</div>`}
     </div>
     <div class="glass card" data-in><h2 class="h">${esc(T("q.runs"))} <small>RUNS · 30D</small></h2><div class="sub">${esc(T("q.runs_sub"))}</div><div id="q-sc"></div></div>
