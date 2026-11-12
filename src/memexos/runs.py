@@ -41,14 +41,24 @@ def lane(job: str) -> str:
     return "collect" if job in COLLECT_JOBS else "write" if job in WRITE_JOBS else "other"
 
 
-def alive(pid) -> bool:
+def alive(pid, start: str | None = None) -> bool:
+    """Whether the process that started this run is still the one holding that pid.
+
+    `start` is the marker recorded in run.start (see events.proc_start). Without
+    it — events written before the marker existed — only the pid is checked, which
+    is what made a container restart look like a run that never ends.
+    """
     try:
         os.kill(int(pid), 0)
-        return True
     except (ProcessLookupError, ValueError, TypeError):
         return False
     except PermissionError:
-        return True
+        pass
+    if start:
+        now = events.proc_start(int(pid))
+        if now and now != start:
+            return False
+    return True
 
 
 class _Builder:
@@ -99,10 +109,11 @@ class _Builder:
         t = events._epoch(ev.get("ts", ""))
         rs = self.runs.get(rid)
         if rs is None:
-            rs = self.runs[rid] = {"job": ev.get("job", ""), "t0": t, "pid": None, "unit": None, "ended": False, "last": t}
+            rs = self.runs[rid] = {"job": ev.get("job", ""), "t0": t, "pid": None, "start": None, "unit": None,
+                                   "ended": False, "last": t}
         rs["last"] = t
         if typ == "run.start":
-            rs.update(job=ev.get("job", ""), t0=t, pid=d.get("pid"))
+            rs.update(job=ev.get("job", ""), t0=t, pid=d.get("pid"), start=d.get("start"))
             return
         if typ == "run.end":
             u = rs.get("unit")
@@ -165,7 +176,7 @@ class _Builder:
             u = rs.get("unit")
             if u and u["t1"] is None and not rs["ended"]:
                 # no run.end: the process died (pid gone), or the events came from outside a run (no pid) and stopped
-                if rs.get("pid") and not alive(rs["pid"]):
+                if rs.get("pid") and not alive(rs["pid"], rs.get("start")):
                     self.close(rs, rs["last"], "interrupted")
                 elif not rs.get("pid") and now - rs["last"] > 600:
                     self.close(rs, rs["last"], "interrupted" if u["kind"] == "batch" else "done")

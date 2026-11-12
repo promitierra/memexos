@@ -159,3 +159,30 @@ def test_command_pattern_is_fast_on_many_backslashes():
     assert time.time() - t0 < 1.0
     m = usage.JS_CMD.search('cmd: "memex search \\"q\\""')
     assert m and m.group(2) == 'memex search \\"q\\"'
+
+
+def test_reused_pid_is_not_the_same_process(tmp_path):
+    """A container that restarts gives the console the same pid again: the start marker, not the pid, decides."""
+    st = tmp_path / "state"
+    mine = events.proc_start(os.getpid())
+    write(st, [
+        ("old", "ingest", "run.start", {"pid": os.getpid(), "start": "1"}),
+        ("old", "ingest", "stage.open", {"branch": "staging/9"}),
+        ("old", "ingest", "step.start", {"name": "selfcheck"}),
+        ("new", "intake", "run.start", {"pid": os.getpid(), "start": mine}),
+        ("new", "intake", "step.start", {"name": "admit"}),
+    ])
+    by = {u["run"]: u for u in runs.timeline(st, 0)}
+    assert by["old"]["status"] == "interrupted"          # the pid lives, but it is another process
+    assert by["new"]["status"] == "running"
+    assert runs.active_stages(st) == {"intake": ["intake"]}
+
+
+def test_run_start_records_the_process_marker(tmp_path):
+    st = tmp_path / "state"
+    with events.run(st, "ingest"):
+        pass
+    start = next(e for e in events.read(st) if e["type"] == "run.start")
+    assert start["data"]["pid"] == os.getpid()
+    assert start["data"]["start"] == events.proc_start(os.getpid())
+    assert events.proc_start(999999) == ""               # a dead pid has no marker to compare

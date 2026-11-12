@@ -22,6 +22,7 @@ import contextlib
 import json
 import os
 import secrets
+import subprocess
 import time
 from pathlib import Path
 from typing import Any, Iterator
@@ -79,6 +80,31 @@ def _log_line(state_dir: Path, line: str) -> None:
         f.write(f"[{time.strftime('%Y-%m-%d %H:%M:%S')}] {line}\n")
 
 
+def proc_start(pid: int) -> str:
+    """A marker that changes when the OS hands the same pid to a different process.
+
+    `os.kill(pid, 0)` answers "some process has this pid", not "it is the process
+    that started the run". In a container the console is always pid 7, so after a
+    restart the orphaned run of the previous console looks alive forever and the
+    UI keeps saying it is working. The marker is the process start instant:
+    /proc/<pid>/stat on Linux, `ps -o lstart=` elsewhere. Empty when the platform
+    offers neither, and then only the pid is checked — the old, weaker behaviour.
+    """
+    try:
+        with open("/proc/%d/stat" % int(pid), "rb") as f:
+            data = f.read().decode("utf-8", "replace")
+        # fields after the parenthesised command name start at field 3; starttime is field 22
+        return data.rsplit(")", 1)[-1].split()[19]
+    except (OSError, ValueError, IndexError, TypeError):
+        pass
+    try:
+        out = subprocess.run(["ps", "-o", "lstart=", "-p", str(int(pid))], capture_output=True, text=True, timeout=5,
+                             env={**os.environ, "LC_ALL": "C"}, stdin=subprocess.DEVNULL)
+    except (OSError, ValueError, TypeError, subprocess.SubprocessError):
+        return ""
+    return out.stdout.strip()
+
+
 def new_run(job: str) -> str:
     """Start a run. A run started by another run's process (through MEMEX_RUN) records that run as its parent."""
     parent = os.environ.get("MEMEX_RUN", "")
@@ -90,11 +116,12 @@ def new_run(job: str) -> str:
 
 @contextlib.contextmanager
 def run(state_dir: Path, job: str) -> Iterator[str]:
-    """A whole command: run.start (with the pid, so readers can tell a live run from a crashed one) … run.end."""
+    """A whole command: run.start (with the pid and its start marker, so readers can tell a live run from a
+    crashed one even when the OS reuses the pid) … run.end."""
     saved, saved_env = dict(_run), os.environ.get("MEMEX_RUN")
     rid = new_run(job)
     t0 = time.time()
-    emit(state_dir, "run.start", pid=os.getpid())
+    emit(state_dir, "run.start", pid=os.getpid(), start=proc_start(os.getpid()))
     status = "error"
     try:
         yield rid
