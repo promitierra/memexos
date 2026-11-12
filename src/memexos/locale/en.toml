@@ -301,6 +301,7 @@ fix_failed = "the fix still has problems"
 skipped = "self-check skipped ({why}); going straight to review"
 nothing = "self-check: no new sentences to check"
 too_few = "self-check: too few judgments came back ({got}/{total}); going straight to review"
+budget = "self-check: out of its {seconds}s budget ({got}/{total} sentences judged); going straight to review"
 summary = "self-check: {total} new sentences, {flagged} without clear support in the sources"
 item = """- {page}: “{text}”
   closest source passage: {source}"""

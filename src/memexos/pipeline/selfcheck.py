@@ -16,6 +16,7 @@ import collections
 import math
 import re
 import subprocess
+import time
 from pathlib import Path
 
 from memexos import events, i18n, judge, rawref
@@ -99,7 +100,10 @@ class Evidence:
         return [docs[i] for i in sorted(range(n), key=lambda i: -scores[i])[:k]]
 
 
-def run(cfg, stage: Path, base: str, raws: list[str], threshold: float | None = None, limit: int = 60) -> tuple[int, str, str]:
+def run(cfg, stage: Path, base: str, raws: list[str], threshold: float | None = None, limit: int = 60,
+        timeout: float | None = None) -> tuple[int, str, str]:
+    """`timeout` caps the whole check in seconds. Without a cap the judge batches run one after another and a
+    slow backend turns a step that was going to be skipped anyway into half an hour of paid waiting."""
     j = judge.get(cfg)
     ok, why = j.available() if j.name != "none" else (False, "no judge configured")
     if not ok:
@@ -123,12 +127,18 @@ def run(cfg, stage: Path, base: str, raws: list[str], threshold: float | None = 
         evid.append(best)
         # one question per sentence, with its closest passages together: supported if any of them supports it
         items.append({"page": Path(u["page"]).stem, "claim": u["text"], "source": "\n…\n".join(best) or "(no source passage found)"})
+    budget = float(timeout if timeout is not None else cfg.get("pipeline.selfcheck_timeout") or 900)
+    deadline = time.monotonic() + budget if budget > 0 else None
+    started = time.monotonic()
     try:
-        scores = j.supported(items)
+        scores = j.supported(items, deadline=deadline)
     except judge.JudgeUnavailable as e:
         return 2, "", i18n.t("selfcheck.skipped", why=str(e))
-    if sum(s is not None for s in scores) < len(items) * 0.5:
-        return 2, "", i18n.t("selfcheck.too_few", got=sum(s is not None for s in scores), total=len(items))
+    answered = sum(s is not None for s in scores)
+    if deadline is not None and answered < len(items) and time.monotonic() >= deadline:
+        return 2, "", i18n.t("selfcheck.budget", got=answered, total=len(items), seconds=round(time.monotonic() - started))
+    if answered < len(items) * 0.5:
+        return 2, "", i18n.t("selfcheck.too_few", got=answered, total=len(items))
     flagged = [(p, u, best[0] if best else "") for p, u, best in zip(scores, units, evid) if p is not None and p < threshold]
     summary = i18n.t("selfcheck.summary", total=len(units), flagged=len(flagged))
     # the counts travel as numbers too: the benchmark report cannot parse a translated sentence

@@ -252,6 +252,10 @@ gate1_fix_rounds = 2
 gate2 = "enforce"         # enforce | off (only for debugging)
 gate2_fix_rounds = 2
 selfcheck = "on"
+# Seconds the self-check may spend judging sentences before it gives up and
+# sends the batch straight to review with what it has. 0 = no limit. The check
+# exists to save a review round; when the judge is slow it costs one instead.
+selfcheck_timeout = 900
 fix_max_reviews = 4
 correct_max = 6
 

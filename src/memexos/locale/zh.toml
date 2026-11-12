@@ -298,6 +298,7 @@ fix_failed = "修复后复核仍有问题"
 skipped = "自查跳过（{why}），直接送门 2"
 nothing = "自查：没有新写的句子要核对"
 too_few = "自查：判断模型返回的结果太少（{got}/{total}），直接送门 2"
+budget = "自查：用完 {seconds} 秒预算（只判断了 {got}/{total} 句），直接送门 2"
 summary = "自查：新写 {total} 句，{flagged} 句在来源里没找到明确依据"
 item = """- {page}：「{text}」
   最接近的原文片段：{source}"""
